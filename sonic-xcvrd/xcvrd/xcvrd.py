@@ -495,7 +495,6 @@ def post_port_dom_info_to_db(logical_port_name, port_mapping, table, stop_event=
                 beautify_dom_info_dict(dom_info_dict, physical_port)
                 fvs = swsscommon.FieldValuePairs([(k, v) for k, v in dom_info_dict.items()])
                 table.set(port_name, fvs)
-
             else:
                 return SFP_EEPROM_NOT_READY
 
