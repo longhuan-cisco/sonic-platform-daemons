@@ -578,7 +578,7 @@ def post_port_pm_info_to_db(logical_port_name, port_mapping, table, stop_event=t
                 return SFP_EEPROM_NOT_READY
 
         except NotImplementedError:
-            helper_logger.log_error("This functionality is currently not implemented for this platform")
+            helper_logger.log_error("get_transceiver_pm is currently not implemented for this platform")
             sys.exit(NOT_IMPLEMENTED_ERROR)
 
 # Update port dom/sfp info in db
