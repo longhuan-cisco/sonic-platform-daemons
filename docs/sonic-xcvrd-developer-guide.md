@@ -279,14 +279,39 @@ class CmisManagerTask(threading.Thread):
         """Check if CMIS application code needs to be updated"""
 ```
 
-### 4. DomInfoUpdateTask (dom/dom_mgr.py)
+### 4. DOM Manager Classes (dom/dom_mgr.py)
+
+The DOM manager has been refactored with a base class and specialized task classes.
+
+#### DomInfoUpdateBase (Base Class)
+
+```python
+class DomInfoUpdateBase(threading.Thread):
+    """
+    Base class for DOM information update tasks.
+    Provides common functionality:
+    - Port mapping management
+    - DOM polling configuration checking
+    - Logging utilities
+    - Port config change handling
+    """
+
+    def get_dom_polling_from_config_db(self, lport):
+        """Get dom_polling field from CONFIG_DB PORT table"""
+
+    def is_port_dom_monitoring_disabled(self, logical_port_name):
+        """Check if DOM polling is disabled via CONFIG_DB"""
+
+    def on_port_config_change(self, port_change_event):
+        """Handle port configuration changes"""
+```
+
+#### DomInfoUpdateTask
 
 Periodic monitoring of DOM sensors, VDM values, and transceiver status.
 
-**Key Methods:**
-
 ```python
-class DomInfoUpdateTask(threading.Thread):
+class DomInfoUpdateTask(DomInfoUpdateBase):
     DOM_INFO_UPDATE_PERIOD_SECS = 60
 
     def task_worker(self):
@@ -300,11 +325,38 @@ class DomInfoUpdateTask(threading.Thread):
         6. Post VDM values if supported (with freeze/unfreeze)
         """
 
+    def is_port_in_cmis_initialization_process(self, logical_port_name):
+        """Check if port is in CMIS init (uses CMIS_TERMINAL_STATES from common.py)"""
+
     def is_port_dom_monitoring_disabled(self, logical_port_name):
-        """Check if DOM polling is disabled via CONFIG_DB or CMIS init in progress"""
+        """Override: Also checks CMIS init in progress"""
 
     def on_port_update_event(self, port_change_event):
         """Handle link change events from APPL_DB flap_count field"""
+```
+
+#### DomThermalInfoUpdateTask
+
+Dedicated task for high-frequency temperature monitoring.
+
+```python
+class DomThermalInfoUpdateTask(DomInfoUpdateBase):
+    """
+    Separate task for temperature monitoring with configurable poll interval.
+    Useful for faster thermal response without affecting full DOM polling.
+    """
+
+    def __init__(self, namespaces, port_mapping, sfp_obj_dict,
+                 main_thread_stop_event, poll_interval):
+        """Initialize with configurable poll_interval (seconds)"""
+
+    def task_worker(self):
+        """
+        Temperature monitoring loop:
+        1. Poll transceiver temperature at configurable interval
+        2. Post to TRANSCEIVER_DOM_TEMPERATURE table
+        3. Skip disabled or absent ports
+        """
 ```
 
 ### 5. SffManagerTask (sff_mgr.py)
@@ -338,8 +390,10 @@ class SffManagerTask(threading.Thread):
 
 ### State Definitions
 
+CMIS states are defined in both `xcvrd.py` and `xcvrd_utilities/common.py` for access across modules:
+
 ```python
-# xcvrd.py:56-72
+# xcvrd_utilities/common.py and xcvrd.py
 CMIS_STATE_UNKNOWN        = 'UNKNOWN'       # Initial state, xcvrd not yet processed
 CMIS_STATE_INSERTED       = 'INSERTED'      # Module detected, starting initialization
 CMIS_STATE_DP_PRE_INIT_CHECK = 'DP_PRE_INIT_CHECK'  # Checking pre-conditions for DataPath init
@@ -354,6 +408,8 @@ CMIS_STATE_FAILED         = 'FAILED'        # Initialization failed (terminal st
 
 CMIS_TERMINAL_STATES = {CMIS_STATE_FAILED, CMIS_STATE_READY, CMIS_STATE_REMOVED}
 ```
+
+**Note:** `CMIS_TERMINAL_STATES` is used by DomInfoUpdateTask to determine if DOM polling should proceed (skipped during CMIS initialization).
 
 ### State Transition Diagram
 
@@ -573,6 +629,7 @@ if vdm_utils.is_transceiver_vdm_supported(physical_port):
 | Table Name | Key | Description | Updated By |
 |------------|-----|-------------|------------|
 | `TRANSCEIVER_DOM_SENSOR` | `<port_name>` | DOM sensor values (temp, voltage, power) | DomInfoUpdateTask |
+| `TRANSCEIVER_DOM_TEMPERATURE` | `<port_name>` | Temperature-only sensor values | DomThermalInfoUpdateTask |
 | `TRANSCEIVER_DOM_FLAG` | `<port_name>` | DOM alarm/warning flags | DomInfoUpdateTask |
 | `TRANSCEIVER_DOM_FLAG_CHANGE_COUNT` | `<port_name>` | Count of flag state changes | DomInfoUpdateTask |
 | `TRANSCEIVER_DOM_FLAG_SET_TIME` | `<port_name>` | Last time each flag was set | DomInfoUpdateTask |
