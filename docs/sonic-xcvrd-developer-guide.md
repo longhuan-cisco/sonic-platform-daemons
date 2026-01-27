@@ -50,13 +50,14 @@ A comprehensive technical reference for developers working on the SONiC Transcei
 ### Entry Point
 
 ```bash
-xcvrd [--skip_cmis_mgr] [--enable_sff_mgr]
+xcvrd [--skip_cmis_mgr] [--enable_sff_mgr] [--dom_temperature_poll_interval <seconds>]
 ```
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--skip_cmis_mgr` | Disable CMIS manager thread | Enabled |
 | `--enable_sff_mgr` | Enable SFF manager thread | Disabled |
+| `--dom_temperature_poll_interval` | Enable thermal monitoring thread with specified poll interval (seconds) | Disabled |
 
 ---
 
@@ -75,9 +76,9 @@ xcvrd [--skip_cmis_mgr] [--enable_sff_mgr]
                                     │  - Database table initialization            │
                                     └─────────────────┬───────────────────────────┘
                                                       │
-                     ┌────────────────────────────────┼────────────────────────────────┐
-                     │                                │                                │
-                     ▼                                ▼                                ▼
+          ┌───────────────────────────────────────────┼───────────────────────────────────────────┐
+          │                                           │                                           │
+          ▼                                           ▼                                           ▼
     ┌────────────────────────────┐  ┌────────────────────────────┐  ┌────────────────────────────┐
     │    SfpStateUpdateTask      │  │     CmisManagerTask        │  │    DomInfoUpdateTask       │
     │                            │  │                            │  │                            │
@@ -87,15 +88,16 @@ xcvrd [--skip_cmis_mgr] [--enable_sff_mgr]
     │  - DOM threshold posting   │  │  - TX power control        │  │  - Firmware info           │
     └────────────────────────────┘  └────────────────────────────┘  └────────────────────────────┘
                                                       │
-                                                      │ (Optional)
-                                                      ▼
-                                    ┌────────────────────────────┐
-                                    │     SffManagerTask         │
-                                    │                            │
-                                    │  - SFF TX enable/disable   │
-                                    │  - High power class enable │
-                                    │  - Deterministic link up   │
-                                    └────────────────────────────┘
+                                     ┌────────────────┴────────────────┐
+                                     │ (Optional)                      │ (Optional)
+                                     ▼                                 ▼
+                    ┌────────────────────────────┐  ┌─────────────────────────────────┐
+                    │     SffManagerTask         │  │   DomThermalInfoUpdateTask      │
+                    │                            │  │                                 │
+                    │  - SFF TX enable/disable   │  │  - High-frequency temp polling  │
+                    │  - High power class enable │  │  - Configurable poll interval   │
+                    │  - Deterministic link up   │  │  - Posts to DOM_TEMPERATURE tbl │
+                    └────────────────────────────┘  └─────────────────────────────────┘
 ```
 
 ### Thread Responsibilities
@@ -106,6 +108,7 @@ xcvrd [--skip_cmis_mgr] [--enable_sff_mgr]
 | `SfpStateUpdateTask` | Presence detection, initial EEPROM read | 1s polling |
 | `CmisManagerTask` | CMIS module state management | 60s state machine loop |
 | `DomInfoUpdateTask` | DOM/VDM sensor monitoring | 60s periodic |
+| `DomThermalInfoUpdateTask` | Temperature-only monitoring (optional) | Configurable |
 | `SffManagerTask` | SFF TX control (optional) | Event-driven |
 
 ### Thread Synchronization
@@ -123,11 +126,14 @@ Threads communicate through:
 sonic-xcvrd/
 ├── xcvrd/
 │   ├── __init__.py
-│   ├── xcvrd.py                    # Main daemon entry point (~2300 lines)
-│   │                               # Contains: DaemonXcvrd, CmisManagerTask, SfpStateUpdateTask
+│   ├── xcvrd.py                    # Main daemon entry point
+│   │                               # Contains: DaemonXcvrd, SfpStateUpdateTask
 │   ├── sff_mgr.py                  # SFF link bring-up manager
+│   ├── cmis/
+│   │   ├── __init__.py
+│   │   └── cmis_manager_task.py    # CmisManagerTask - CMIS state machine
 │   ├── dom/
-│   │   ├── dom_mgr.py              # DomInfoUpdateTask - periodic DOM monitoring
+│   │   ├── dom_mgr.py              # DomInfoUpdateBase, DomInfoUpdateTask, DomThermalInfoUpdateTask
 │   │   └── utilities/
 │   │       ├── db/
 │   │       │   └── utils.py        # Base DBUtils class
@@ -141,9 +147,9 @@ sonic-xcvrd/
 │   │           ├── utils.py        # VDMUtils - VDM operations
 │   │           └── db_utils.py     # VDMDBUtils - VDM database posting
 │   └── xcvrd_utilities/
-│       ├── common.py               # Shared helper functions
+│       ├── common.py               # Shared helpers, CMIS states, warm reboot detection
 │       ├── port_event_helper.py    # Port change event handling
-│       ├── xcvr_table_helper.py    # Database table abstraction
+│       ├── xcvr_table_helper.py    # Database table abstraction, gearbox support
 │       ├── sfp_status_helper.py    # SFP error status handling
 │       ├── media_settings_parser.py # SerDes SI settings parser
 │       ├── optics_si_parser.py     # Optics SI settings parser
@@ -205,7 +211,7 @@ class DaemonXcvrd(daemon_base.DaemonBase):
    └── Spawn SffManagerTask (if enabled)
 ```
 
-### 2. SfpStateUpdateTask (xcvrd.py:1390-1979)
+### 2. SfpStateUpdateTask (xcvrd.py)
 
 Monitors SFP presence and posts transceiver information to the database.
 
@@ -249,9 +255,9 @@ class SfpStateUpdateTask(threading.Thread):
     └─────────────────┘
 ```
 
-### 3. CmisManagerTask (xcvrd.py:319-1389)
+### 3. CmisManagerTask (cmis/cmis_manager_task.py)
 
-Manages CMIS-compliant module initialization and configuration.
+Manages CMIS-compliant module initialization and configuration. This task has been modularized into its own file under the `cmis/` directory.
 
 **Key Methods:**
 
@@ -390,10 +396,10 @@ class SffManagerTask(threading.Thread):
 
 ### State Definitions
 
-CMIS states are defined in both `xcvrd.py` and `xcvrd_utilities/common.py` for access across modules:
+CMIS states are defined in `xcvrd_utilities/common.py` and imported by modules that need them (e.g., `cmis/cmis_manager_task.py`, `dom/dom_mgr.py`):
 
 ```python
-# xcvrd_utilities/common.py and xcvrd.py
+# xcvrd_utilities/common.py
 CMIS_STATE_UNKNOWN        = 'UNKNOWN'       # Initial state, xcvrd not yet processed
 CMIS_STATE_INSERTED       = 'INSERTED'      # Module detected, starting initialization
 CMIS_STATE_DP_PRE_INIT_CHECK = 'DP_PRE_INIT_CHECK'  # Checking pre-conditions for DataPath init
@@ -826,8 +832,10 @@ xcvrd implements special handling to prevent port flaps during warm and fast reb
 
 ### Warm Reboot Detection
 
+The `is_syncd_warm_restore_complete()` function is defined in `xcvrd_utilities/common.py`:
+
 ```python
-# xcvrd/xcvrd.py
+# xcvrd/xcvrd_utilities/common.py
 
 def is_syncd_warm_restore_complete():
     """
@@ -1523,11 +1531,12 @@ api.get_application_advertisement()
 
 | File | Purpose |
 |------|---------|
-| `xcvrd/xcvrd.py` | Main daemon, CmisManagerTask, SfpStateUpdateTask |
+| `xcvrd/xcvrd.py` | Main daemon (DaemonXcvrd), SfpStateUpdateTask |
+| `xcvrd/cmis/cmis_manager_task.py` | CmisManagerTask - CMIS state machine |
 | `xcvrd/sff_mgr.py` | SffManagerTask |
-| `xcvrd/dom/dom_mgr.py` | DomInfoUpdateTask |
-| `xcvrd/xcvrd_utilities/common.py` | Shared utility functions |
-| `xcvrd/xcvrd_utilities/xcvr_table_helper.py` | Database table abstraction |
+| `xcvrd/dom/dom_mgr.py` | DomInfoUpdateBase, DomInfoUpdateTask, DomThermalInfoUpdateTask |
+| `xcvrd/xcvrd_utilities/common.py` | Shared utility functions, CMIS states, warm reboot detection |
+| `xcvrd/xcvrd_utilities/xcvr_table_helper.py` | Database table abstraction, gearbox support |
 | `xcvrd/xcvrd_utilities/port_event_helper.py` | Port change event handling |
 
 ### Important Constants
