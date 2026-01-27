@@ -12,12 +12,15 @@ A comprehensive technical reference for developers working on the SONiC Transcei
 4. [Core Components Deep Dive](#core-components-deep-dive)
 5. [CMIS State Machine](#cmis-state-machine)
 6. [Database Tables Reference](#database-tables-reference)
-7. [Configuration & Settings](#configuration--settings)
-8. [Event Flow & Data Flow](#event-flow--data-flow)
-9. [Debugging Guide](#debugging-guide)
-10. [Code Patterns & Best Practices](#code-patterns--best-practices)
-11. [Testing](#testing)
-12. [Common Issues & Troubleshooting](#common-issues--troubleshooting)
+7. [Flag Metadata Tables Pattern](#flag-metadata-tables-pattern)
+8. [Warm/Fast Reboot Handling](#warmfast-reboot-handling)
+9. [Dynamic Port Breakout (DPB)](#dynamic-port-breakout-dpb)
+10. [Configuration & Settings](#configuration--settings)
+11. [Event Flow & Data Flow](#event-flow--data-flow)
+12. [Debugging Guide](#debugging-guide)
+13. [Code Patterns & Best Practices](#code-patterns--best-practices)
+14. [Testing](#testing)
+15. [Common Issues & Troubleshooting](#common-issues--troubleshooting)
 
 ---
 
@@ -494,26 +497,120 @@ def is_decommission_required(self, api, app_new):
     return False
 ```
 
+### Decommission Pending State
+
+Decommission requires coordination across all logical ports sharing a physical port:
+
+```python
+# Only one logical port leads the decommission
+decomm_pending_dict = {}  # {physical_port_index: lead_logical_port}
+
+# During INSERTED state, check if decommission needed
+if is_decommission_required(api, app_new):
+    if not is_decomm_pending(lport):
+        set_decomm_pending(lport)  # Mark this port as leader
+    if is_decomm_lead_lport(lport):
+        # This port leads the decommission
+        return CMIS_STATE_DP_DEINIT
+    else:
+        # Wait for leader to complete or fail
+        if is_decomm_failed(lport):
+            return CMIS_STATE_FAILED
+        return CMIS_STATE_INSERTED  # Stay in INSERTED
+
+# In DP_INIT state, after ConfigSuccess:
+clear_decomm_pending(lport)  # Allow other ports to proceed
+```
+
+### VDM Freeze/Unfreeze Context
+
+VDM statistics must be frozen before reading to ensure consistent snapshots:
+
+```python
+# xcvrd/dom/utilities/vdm/utils.py
+
+class VDMUtils:
+    @contextmanager
+    def vdm_freeze_context(self, physical_port):
+        """Context manager for VDM freeze/unfreeze operations"""
+        frozen = False
+        try:
+            frozen = self._freeze_vdm_stats_and_confirm(physical_port)
+            yield frozen
+        finally:
+            if frozen:
+                self._unfreeze_vdm_stats_and_confirm(physical_port)
+
+# Usage in DomInfoUpdateTask
+if vdm_utils.is_transceiver_vdm_supported(physical_port):
+    with vdm_utils.vdm_freeze_context(physical_port) as vdm_frozen:
+        if not vdm_frozen:
+            self.log_error(f"Failed to freeze VDM stats for port {physical_port}")
+            continue
+        # Read VDM values while frozen
+        vdm_db_utils.post_port_vdm_real_values_to_db(logical_port_name)
+        vdm_db_utils.post_port_vdm_flags_to_db(logical_port_name)
+    # VDM automatically unfrozen when exiting context
+```
+
 ---
 
 ## Database Tables Reference
 
 ### STATE_DB Tables
 
+#### Core Transceiver Tables
+
 | Table Name | Key | Description | Updated By |
 |------------|-----|-------------|------------|
 | `TRANSCEIVER_INFO` | `<port_name>` | Module identification info | SfpStateUpdateTask |
-| `TRANSCEIVER_DOM_SENSOR` | `<port_name>` | DOM sensor values (temp, voltage, power) | DomInfoUpdateTask |
-| `TRANSCEIVER_DOM_FLAG` | `<port_name>` | DOM alarm/warning flags | DomInfoUpdateTask |
-| `TRANSCEIVER_DOM_THRESHOLD` | `<port_name>` | DOM alarm/warning thresholds | SfpStateUpdateTask |
-| `TRANSCEIVER_STATUS` | `<port_name>` | Module hardware status | DomInfoUpdateTask |
-| `TRANSCEIVER_STATUS_FLAG` | `<port_name>` | Status alarm/warning flags | DomInfoUpdateTask |
 | `TRANSCEIVER_STATUS_SW` | `<port_name>` | Software status (status, error, cmis_state) | CmisManagerTask, SfpStateUpdateTask |
-| `TRANSCEIVER_VDM_REAL_VALUE` | `<port_name>` | VDM real-time values | DomInfoUpdateTask |
-| `TRANSCEIVER_VDM_*_FLAG` | `<port_name>` | VDM alarm/warning flags | DomInfoUpdateTask |
-| `TRANSCEIVER_VDM_*_THRESHOLD` | `<port_name>` | VDM thresholds | SfpStateUpdateTask |
 | `TRANSCEIVER_FIRMWARE_INFO` | `<port_name>` | Firmware versions | DomInfoUpdateTask |
 | `TRANSCEIVER_PM` | `<port_name>` | Performance monitoring data | DomInfoUpdateTask |
+
+#### DOM (Diagnostic Optical Monitoring) Tables
+
+| Table Name | Key | Description | Updated By |
+|------------|-----|-------------|------------|
+| `TRANSCEIVER_DOM_SENSOR` | `<port_name>` | DOM sensor values (temp, voltage, power) | DomInfoUpdateTask |
+| `TRANSCEIVER_DOM_FLAG` | `<port_name>` | DOM alarm/warning flags | DomInfoUpdateTask |
+| `TRANSCEIVER_DOM_FLAG_CHANGE_COUNT` | `<port_name>` | Count of flag state changes | DomInfoUpdateTask |
+| `TRANSCEIVER_DOM_FLAG_SET_TIME` | `<port_name>` | Last time each flag was set | DomInfoUpdateTask |
+| `TRANSCEIVER_DOM_FLAG_CLEAR_TIME` | `<port_name>` | Last time each flag was cleared | DomInfoUpdateTask |
+| `TRANSCEIVER_DOM_THRESHOLD` | `<port_name>` | DOM alarm/warning thresholds | SfpStateUpdateTask |
+
+#### Transceiver Status Tables
+
+| Table Name | Key | Description | Updated By |
+|------------|-----|-------------|------------|
+| `TRANSCEIVER_STATUS` | `<port_name>` | Module hardware status | DomInfoUpdateTask |
+| `TRANSCEIVER_STATUS_FLAG` | `<port_name>` | Status alarm/warning flags | DomInfoUpdateTask |
+| `TRANSCEIVER_STATUS_FLAG_CHANGE_COUNT` | `<port_name>` | Count of status flag changes | DomInfoUpdateTask |
+| `TRANSCEIVER_STATUS_FLAG_SET_TIME` | `<port_name>` | Last time each status flag was set | DomInfoUpdateTask |
+| `TRANSCEIVER_STATUS_FLAG_CLEAR_TIME` | `<port_name>` | Last time each status flag was cleared | DomInfoUpdateTask |
+
+#### VDM (Vital Data Monitoring) Tables
+
+VDM tables are organized by threshold type: `halarm` (high alarm), `lalarm` (low alarm), `hwarn` (high warning), `lwarn` (low warning).
+
+| Table Name | Key | Description | Updated By |
+|------------|-----|-------------|------------|
+| `TRANSCEIVER_VDM_REAL_VALUE` | `<port_name>` | VDM real-time values | DomInfoUpdateTask |
+| `TRANSCEIVER_VDM_HALARM_FLAG` | `<port_name>` | High alarm threshold flags | DomInfoUpdateTask |
+| `TRANSCEIVER_VDM_LALARM_FLAG` | `<port_name>` | Low alarm threshold flags | DomInfoUpdateTask |
+| `TRANSCEIVER_VDM_HWARN_FLAG` | `<port_name>` | High warning threshold flags | DomInfoUpdateTask |
+| `TRANSCEIVER_VDM_LWARN_FLAG` | `<port_name>` | Low warning threshold flags | DomInfoUpdateTask |
+| `TRANSCEIVER_VDM_HALARM_THRESHOLD` | `<port_name>` | High alarm threshold values | SfpStateUpdateTask |
+| `TRANSCEIVER_VDM_LALARM_THRESHOLD` | `<port_name>` | Low alarm threshold values | SfpStateUpdateTask |
+| `TRANSCEIVER_VDM_HWARN_THRESHOLD` | `<port_name>` | High warning threshold values | SfpStateUpdateTask |
+| `TRANSCEIVER_VDM_LWARN_THRESHOLD` | `<port_name>` | Low warning threshold values | SfpStateUpdateTask |
+
+Each VDM flag table also has corresponding metadata tables:
+- `TRANSCEIVER_VDM_<type>_FLAG_CHANGE_COUNT`
+- `TRANSCEIVER_VDM_<type>_FLAG_SET_TIME`
+- `TRANSCEIVER_VDM_<type>_FLAG_CLEAR_TIME`
+
+Where `<type>` is one of: `HALARM`, `LALARM`, `HWARN`, `LWARN`
 
 ### TRANSCEIVER_INFO Fields
 
@@ -563,6 +660,275 @@ subport        - Subport index for breakout (0=no breakout, 1-N for subports)
 laser_freq     - Laser frequency for coherent modules (GHz)
 tx_power       - TX output power for coherent modules (dBm)
 dom_polling    - 'enabled' or 'disabled'
+```
+
+### STATE_DB PORT_TABLE Fields Used by xcvrd
+
+```
+host_tx_ready              - 'true' or 'false' - indicates NPU is ready for TX
+NPU_SI_SETTINGS_SYNC_STATUS - Tracks NPU SI settings sync state:
+                             'NPU_SI_SETTINGS_DEFAULT' - needs update
+                             'NPU_SI_SETTINGS_NOTIFIED' - already notified
+```
+
+---
+
+## Flag Metadata Tables Pattern
+
+xcvrd implements a sophisticated flag metadata tracking system that provides visibility into flag state transitions over time. This pattern is used for DOM flags, status flags, and VDM flags.
+
+### Metadata Tables Structure
+
+For each flag table (e.g., `TRANSCEIVER_DOM_FLAG`), three companion metadata tables are maintained:
+
+| Table Suffix | Purpose | Initial Value |
+|--------------|---------|---------------|
+| `_CHANGE_COUNT` | Number of times flag value changed | `0` |
+| `_SET_TIME` | Last UTC timestamp when flag became true | `never` |
+| `_CLEAR_TIME` | Last UTC timestamp when flag became false | `never` |
+
+### Implementation Details
+
+```python
+# xcvrd/dom/utilities/db/utils.py
+
+class DBUtils:
+    NEVER = "never"
+    NOT_AVAILABLE = "N/A"
+
+    def _update_flag_metadata_tables(self, logical_port_name, curr_flag_dict,
+                                    flag_values_dict_update_time,
+                                    flag_value_table,
+                                    flag_change_count_table,
+                                    flag_last_set_time_table,
+                                    flag_last_clear_time_table,
+                                    table_name_for_logging):
+        """
+        Updates metadata tables when flag values change.
+
+        Flow:
+        1. If flag table entry doesn't exist - initialize all metadata to defaults
+        2. For each flag key that changed:
+           - Increment change count
+           - Update set_time if flag became True
+           - Update clear_time if flag became False
+        """
+```
+
+### Example: DOM Flag Metadata
+
+When a temperature high alarm flag transitions from `False` to `True`:
+
+```
+# Before change
+TRANSCEIVER_DOM_FLAG|Ethernet0
+  temphighalarm: False
+
+TRANSCEIVER_DOM_FLAG_CHANGE_COUNT|Ethernet0
+  temphighalarm: 5
+
+TRANSCEIVER_DOM_FLAG_SET_TIME|Ethernet0
+  temphighalarm: Mon Jan 20 10:30:00 2025
+
+TRANSCEIVER_DOM_FLAG_CLEAR_TIME|Ethernet0
+  temphighalarm: Mon Jan 27 08:15:00 2026
+
+# After change (flag set)
+TRANSCEIVER_DOM_FLAG|Ethernet0
+  temphighalarm: True
+
+TRANSCEIVER_DOM_FLAG_CHANGE_COUNT|Ethernet0
+  temphighalarm: 6  # incremented
+
+TRANSCEIVER_DOM_FLAG_SET_TIME|Ethernet0
+  temphighalarm: Mon Jan 27 09:00:00 2026  # updated
+
+TRANSCEIVER_DOM_FLAG_CLEAR_TIME|Ethernet0
+  temphighalarm: Mon Jan 27 08:15:00 2026  # unchanged
+```
+
+### Debugging with Metadata
+
+```bash
+# Check how many times a flag changed
+redis-cli -n 6 hget "TRANSCEIVER_DOM_FLAG_CHANGE_COUNT|Ethernet0" "temphighalarm"
+
+# Check when flag was last set/cleared
+redis-cli -n 6 hget "TRANSCEIVER_DOM_FLAG_SET_TIME|Ethernet0" "temphighalarm"
+redis-cli -n 6 hget "TRANSCEIVER_DOM_FLAG_CLEAR_TIME|Ethernet0" "temphighalarm"
+
+# View all flag metadata for a port
+redis-cli -n 6 hgetall "TRANSCEIVER_DOM_FLAG_CHANGE_COUNT|Ethernet0"
+```
+
+---
+
+## Warm/Fast Reboot Handling
+
+xcvrd implements special handling to prevent port flaps during warm and fast reboot scenarios.
+
+### Warm Reboot Detection
+
+```python
+# xcvrd/xcvrd.py
+
+def is_syncd_warm_restore_complete():
+    """
+    Determines whether syncd's restore_count > 0, indicating warm-reboot.
+    This prevents premature config push by xcvrd that causes port flaps.
+
+    Checks:
+    1. WARM_RESTART_TABLE|syncd.restore_count > 0
+    2. WARM_RESTART_ENABLE_TABLE|system.enable == "true"
+
+    Returns True if either condition indicates warm restart in progress.
+    """
+    state_db = daemon_base.db_connect("STATE_DB")
+    restore_count = state_db.hget("WARM_RESTART_TABLE|syncd", "restore_count")
+    system_enabled = state_db.hget("WARM_RESTART_ENABLE_TABLE|system", "enable")
+
+    # Handle restore_count (could be int, str, or None)
+    if restore_count is not None:
+        if isinstance(restore_count, int) and restore_count > 0:
+            return True
+        elif isinstance(restore_count, str):
+            if restore_count.strip().isdigit() and int(restore_count.strip()) > 0:
+                return True
+
+    # Handle system_enabled
+    if isinstance(system_enabled, str):
+        if system_enabled.strip().lower() == "true":
+            return True
+
+    return False
+```
+
+### Fast Reboot Detection
+
+```python
+# xcvrd/xcvrd_utilities/common.py
+
+def is_fast_reboot_enabled():
+    """Check if fast reboot is enabled via STATE_DB"""
+    fastboot_enabled = subprocess.check_output(
+        'sonic-db-cli STATE_DB hget "FAST_RESTART_ENABLE_TABLE|system" enable',
+        shell=True, universal_newlines=True
+    )
+    return "true" in fastboot_enabled
+```
+
+### Behavior During Warm/Fast Reboot
+
+1. **Media Settings Notification**: Skipped during warm/fast reboot to prevent port flaps
+2. **Initial SFP Info Posting**: Gated on `is_syncd_warm_restore_complete()` returning `False`
+3. **Config Publishing**: Waits for `syncd.restore_count = 1` before pushing configuration
+
+```python
+# In SfpStateUpdateTask
+is_warm_fast_reboot = is_syncd_warm_restore_complete() or common.is_fast_reboot_enabled()
+if not is_warm_fast_reboot:
+    media_settings_parser.notify_media_setting(...)
+```
+
+---
+
+## Dynamic Port Breakout (DPB)
+
+xcvrd handles Dynamic Port Breakout events where a port's lane configuration changes at runtime (e.g., 1x400G to 4x100G).
+
+### DPB Event Sequence
+
+When configuring Ethernet0 from "2x200G" to "1x400G", the following event sequence occurs:
+
+```
+Timeline:
+─────────────────────────────────────────────────────────────────────────
+
+1.  SET Ethernet0 CONFIG_DB|PORT         ← Pre-DPB config for Ethernet0
+2.  DEL Ethernet2 CONFIG_DB|PORT         ← Remove second subport
+3.  DEL Ethernet0 CONFIG_DB|PORT         ← Remove first subport (temp)
+4.  DEL Ethernet0 STATE_DB|PORT_TABLE    ← State cleanup
+5.  DEL Ethernet2 STATE_DB|PORT_TABLE    ← State cleanup
+6.  SET Ethernet0 CONFIG_DB|PORT         ← New 1x400G config
+7.  SET Ethernet0 STATE_DB|PORT_TABLE    ← New state entry
+8.  SET Ethernet0 STATE_DB|PORT_TABLE    ← State update
+9.  DEL Ethernet2 STATE_DB|TRANSCEIVER_INFO  ← Stale info cleanup
+10. DEL Ethernet0 STATE_DB|TRANSCEIVER_INFO  ← Stale info cleanup
+11. SET Ethernet0 STATE_DB|TRANSCEIVER_INFO  ← New transceiver info
+
+─────────────────────────────────────────────────────────────────────────
+```
+
+### CmisManagerTask DPB Handling
+
+```python
+# xcvrd/xcvrd.py - CmisManagerTask.on_port_update_event()
+
+def on_port_update_event(self, port_change_event):
+    if port_change_event.event_type == port_change_event.PORT_DEL:
+        # Two scenarios for DEL events:
+        # 1. Transceiver plug-out (STATE_DB|TRANSCEIVER_INFO DEL)
+        # 2. Dynamic Port Breakout (CONFIG_DB|PORT DEL)
+
+        if lport in self.port_dict:
+            # Set CMIS state to REMOVED for any DEL event
+            self.update_port_transceiver_status_table_sw_cmis_state(lport, CMIS_STATE_REMOVED)
+
+        if port_change_event.db_name == 'CONFIG_DB' and port_change_event.table_name == 'PORT':
+            # For CONFIG_DB PORT DEL (DPB scenario):
+            # - Clear decommission pending status
+            # - Remove port from tracking dictionary
+            self.clear_decomm_pending(lport)
+            self.port_dict.pop(lport)
+```
+
+### Decommission Pending Management
+
+During breakout changes, xcvrd tracks which logical port is leading the decommission operation:
+
+```python
+class CmisManagerTask:
+    def __init__(self):
+        self.decomm_pending_dict = {}  # {physical_port_idx: lead_logical_port}
+
+    def set_decomm_pending(self, lport):
+        """Set decommission pending - only one logical port can lead"""
+        physical_port_idx = self.port_dict[lport]['index']
+        if physical_port_idx in self.decomm_pending_dict:
+            return  # Already has a lead port
+        self.decomm_pending_dict[physical_port_idx] = lport
+
+    def is_decomm_lead_lport(self, lport):
+        """Check if this is the lead logical port for decommission"""
+        return self.decomm_pending_dict.get(self.port_dict[lport]['index']) == lport
+
+    def is_decomm_pending(self, lport):
+        """Check if decommission is pending for this physical port"""
+        return self.port_dict[lport]['index'] in self.decomm_pending_dict
+
+    def is_decomm_failed(self, lport):
+        """Check if the lead port's decommission failed"""
+        physical_port_idx = self.port_dict[lport]['index']
+        lead_logical_port = self.decomm_pending_dict.get(physical_port_idx)
+        if lead_logical_port is None:
+            return False
+        return get_cmis_state_from_state_db(lead_logical_port, ...) == CMIS_STATE_FAILED
+
+    def clear_decomm_pending(self, lport):
+        """Clear decommission pending for entire physical port"""
+        self.decomm_pending_dict.pop(self.port_dict.get(lport, {}).get('index'), None)
+```
+
+### DPB and CMIS Reinitialization
+
+When port configuration changes, `force_cmis_reinit()` is called to restart the CMIS state machine:
+
+```python
+def force_cmis_reinit(self, lport, retries=0):
+    """Force restart of CMIS state machine"""
+    self.update_port_transceiver_status_table_sw_cmis_state(lport, CMIS_STATE_INSERTED)
+    self.port_dict[lport]['cmis_retries'] = retries
+    self.port_dict[lport]['cmis_expired'] = None  # No expiration
 ```
 
 ---
@@ -775,6 +1141,24 @@ redis-cli -n 6 hgetall "TRANSCEIVER_DOM_SENSOR|Ethernet0"
 
 # Check error status
 redis-cli -n 6 hget "TRANSCEIVER_STATUS_SW|Ethernet0" "error"
+
+# Check DOM flag metadata
+redis-cli -n 6 hgetall "TRANSCEIVER_DOM_FLAG|Ethernet0"
+redis-cli -n 6 hgetall "TRANSCEIVER_DOM_FLAG_CHANGE_COUNT|Ethernet0"
+redis-cli -n 6 hgetall "TRANSCEIVER_DOM_FLAG_SET_TIME|Ethernet0"
+redis-cli -n 6 hgetall "TRANSCEIVER_DOM_FLAG_CLEAR_TIME|Ethernet0"
+
+# Check VDM tables (per threshold type)
+redis-cli -n 6 hgetall "TRANSCEIVER_VDM_REAL_VALUE|Ethernet0"
+redis-cli -n 6 hgetall "TRANSCEIVER_VDM_HALARM_FLAG|Ethernet0"
+redis-cli -n 6 hgetall "TRANSCEIVER_VDM_HALARM_FLAG_CHANGE_COUNT|Ethernet0"
+
+# Check warm reboot status
+redis-cli -n 6 hget "WARM_RESTART_TABLE|syncd" "restore_count"
+redis-cli -n 6 hget "WARM_RESTART_ENABLE_TABLE|system" "enable"
+
+# Check NPU SI settings sync status
+redis-cli -n 6 hget "PORT_TABLE|Ethernet0" "NPU_SI_SETTINGS_SYNC_STATUS"
 
 # Monitor real-time DB changes
 redis-cli -n 6 psubscribe "__keyspace@6__:TRANSCEIVER_*"
@@ -1032,6 +1416,48 @@ for lane in range(8):
 api.get_application_advertisement()
 ```
 
+### Issue: Port Flaps After Warm Reboot
+
+**Symptoms:**
+- Ports flap briefly after warm reboot
+- Link goes down and comes back up
+
+**Debugging Steps:**
+1. Check warm restart status: `redis-cli -n 6 hget "WARM_RESTART_TABLE|syncd" "restore_count"`
+2. Check if xcvrd detected warm reboot: `grep "warm" /var/log/syslog | grep xcvrd`
+3. Verify media settings notification was skipped during warm boot
+
+**Common Causes:**
+- `restore_count` not properly set by syncd
+- Race condition between xcvrd startup and syncd restore
+
+### Issue: Decommission Stuck or Failed
+
+**Symptoms:**
+- CMIS state stuck during breakout change
+- Multiple subports show different CMIS states
+
+**Debugging Steps:**
+1. Check which port is leading decommission: Look for "DECOMMISSION: setting decomm_pending" in logs
+2. Verify all subports' CMIS states: `redis-cli -n 6 keys "TRANSCEIVER_STATUS_SW|Ethernet*" | xargs -I{} redis-cli -n 6 hget {} cmis_state`
+3. Check for failed decommission leader
+
+**Resolution:**
+- If stuck, restart xcvrd or remove/reinsert the transceiver
+- Ensure all subports have consistent configuration before breakout change
+
+### Issue: VDM Values Not Updating
+
+**Symptoms:**
+- `TRANSCEIVER_VDM_REAL_VALUE` table has stale data
+- VDM flags not reflecting current state
+
+**Debugging Steps:**
+1. Verify VDM is supported: Check if module supports VDM via platform API
+2. Check low power mode: VDM is skipped if module is in low power mode
+3. Look for freeze/unfreeze errors: `grep "VDM" /var/log/syslog | grep -i freeze`
+4. Verify DOM monitoring is enabled and CMIS state is READY
+
 ---
 
 ## Quick Reference
@@ -1055,6 +1481,9 @@ SFP_INSERT_EVENT_POLL_PERIOD_MSECS = 1000   # SFP polling interval
 STATE_MACHINE_UPDATE_PERIOD_MSECS = 60000   # CMIS state machine interval
 DOM_INFO_UPDATE_PERIOD_SECS = 60            # DOM update interval
 MGMT_INIT_TIME_DELAY_SECS = 2               # SFP insert soak time
+DIAG_DB_UPDATE_TIME_AFTER_LINK_CHANGE = 1   # Delay after link change (seconds)
+CMIS_DEF_EXPIRED = 60                       # Default CMIS state expiration (seconds)
+CMIS_EXPIRATION_BUFFER_MS = 2               # Buffer added to timing calculations
 
 # Retries
 CMIS_MAX_RETRIES = 3                        # Max CMIS init retries
@@ -1063,6 +1492,19 @@ RETRY_TIMES_FOR_SYSTEM_READY = 24           # System ready retries
 # Lane masks
 CMIS_MAX_HOST_LANES = 8
 ALL_LANES_MASK = 0xff
+
+# VDM threshold types
+VDM_THRESHOLD_TYPES = ['halarm', 'lalarm', 'hwarn', 'lwarn']
+
+# NPU SI Settings Sync Status
+NPU_SI_SETTINGS_SYNC_STATUS_KEY = 'NPU_SI_SETTINGS_SYNC_STATUS'
+NPU_SI_SETTINGS_DEFAULT_VALUE = 'NPU_SI_SETTINGS_DEFAULT'
+NPU_SI_SETTINGS_NOTIFIED_VALUE = 'NPU_SI_SETTINGS_NOTIFIED'
+
+# SFP Status values
+SFP_STATUS_REMOVED = '0'
+SFP_STATUS_INSERTED = '1'
+SFP_ERRORS_BLOCKING_MASK = 0x02             # Blocks EEPROM reading
 ```
 
 ### State Machine States Summary
@@ -1096,4 +1538,4 @@ When making changes to xcvrd:
 
 ---
 
-*Last updated: January 2026*
+*Last updated: January 27, 2026*
