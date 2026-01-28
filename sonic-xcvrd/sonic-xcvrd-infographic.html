@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SONiC xcvrd - Transceiver Daemon Architecture</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+            color: #fff;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+        .header h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed, #f97316);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 15px;
+            letter-spacing: -1px;
+        }
+        .header .subtitle {
+            font-size: 1.3rem;
+            color: #94a3b8;
+            font-weight: 300;
+        }
+        .header .badge {
+            display: inline-block;
+            background: rgba(124, 58, 237, 0.2);
+            border: 1px solid #7c3aed;
+            color: #c4b5fd;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            margin-top: 15px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 25px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #f8fafc;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-title .icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .daemon-box {
+            background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 40px rgba(124, 58, 237, 0.3);
+        }
+        .daemon-box h2 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+        }
+        .daemon-box p {
+            color: #e0d6ff;
+            font-size: 0.95rem;
+        }
+
+        .thread-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .thread-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.2);
+            border-left: 4px solid;
+            transition: all 0.2s;
+        }
+        .thread-item:hover {
+            background: rgba(0,0,0,0.3);
+            transform: translateX(5px);
+        }
+        .thread-item.sfp { border-color: #22c55e; }
+        .thread-item.cmis { border-color: #3b82f6; }
+        .thread-item.dom { border-color: #f97316; }
+        .thread-item.sff { border-color: #ec4899; }
+        .thread-item .thread-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+        .thread-item.sfp .thread-icon { background: rgba(34,197,94,0.2); }
+        .thread-item.cmis .thread-icon { background: rgba(59,130,246,0.2); }
+        .thread-item.dom .thread-icon { background: rgba(249,115,22,0.2); }
+        .thread-item.sff .thread-icon { background: rgba(236,72,153,0.2); }
+        .thread-info h4 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+        .thread-info p {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .state-machine {
+            margin-top: 25px;
+        }
+        .state-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 15px 0;
+        }
+        .state {
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .state.init { background: #fef3c7; color: #92400e; }
+        .state.process { background: #dbeafe; color: #1e40af; }
+        .state.ready { background: #d1fae5; color: #065f46; }
+        .state.error { background: #fee2e2; color: #991b1b; }
+        .arrow {
+            color: #64748b;
+            font-size: 1.2rem;
+        }
+
+        .db-section {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .db-item {
+            text-align: center;
+            padding: 20px 15px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.2);
+        }
+        .db-item .db-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            margin: 0 auto 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .db-item.config .db-icon { background: linear-gradient(135deg, #f97316, #ea580c); }
+        .db-item.state .db-icon { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .db-item.appl .db-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .db-item h4 { font-size: 0.9rem; margin-bottom: 5px; }
+        .db-item p { font-size: 0.75rem; color: #94a3b8; }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.2);
+            font-size: 0.85rem;
+        }
+        .feature-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(0,212,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cmis-states {
+            margin-top: 40px;
+        }
+        .cmis-flow {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+        }
+        .cmis-state {
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background: rgba(59,130,246,0.2);
+            border: 1px solid rgba(59,130,246,0.3);
+            color: #93c5fd;
+        }
+        .cmis-state.active {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            box-shadow: 0 4px 15px rgba(59,130,246,0.4);
+        }
+        .cmis-arrow {
+            color: #3b82f6;
+            font-size: 1.2rem;
+        }
+
+        .bottom-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .signal-flow {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            margin-top: 15px;
+        }
+        .signal-node {
+            text-align: center;
+        }
+        .signal-node .node-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .signal-node.host .node-icon { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+        .signal-node.xcvr .node-icon { background: linear-gradient(135deg, #f97316, #ea580c); }
+        .signal-node.media .node-icon { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .signal-node p { font-size: 0.85rem; color: #94a3b8; }
+        .signal-line {
+            flex: 1;
+            height: 3px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1));
+            margin: 0 15px;
+            position: relative;
+        }
+        .signal-line::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: -4px;
+            border: 5px solid transparent;
+            border-left-color: rgba(255,255,255,0.3);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        .footer a {
+            color: #7c3aed;
+            text-decoration: none;
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid { grid-template-columns: 1fr; }
+            .bottom-section { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>sonic-xcvrd</h1>
+            <p class="subtitle">Transceiver Information Update Daemon for SONiC</p>
+            <span class="badge">SONiC Platform Daemon</span>
+        </header>
+
+        <div class="main-grid">
+            <!-- Left Column: Features -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon" style="background: linear-gradient(135deg, #00d4ff, #0891b2);">&#9881;</div>
+                    Key Features
+                </div>
+                <div class="feature-grid">
+                    <div class="feature">
+                        <div class="feature-icon">&#128268;</div>
+                        Hot-Swap Detection
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">&#128200;</div>
+                        DOM Monitoring
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">&#128640;</div>
+                        Multi-ASIC Support
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">&#9889;</div>
+                        VDM Support
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">&#128295;</div>
+                        Media Settings
+                    </div>
+                    <div class="feature">
+                        <div class="feature-icon">&#128274;</div>
+                        Signal Integrity
+                    </div>
+                </div>
+
+                <div style="margin-top: 25px;">
+                    <div class="card-title">
+                        <div class="icon" style="background: linear-gradient(135deg, #f97316, #ea580c);">&#128190;</div>
+                        Database Integration
+                    </div>
+                    <div class="db-section">
+                        <div class="db-item config">
+                            <div class="db-icon">&#9881;</div>
+                            <h4>CONFIG_DB</h4>
+                            <p>Port Config</p>
+                        </div>
+                        <div class="db-item state">
+                            <div class="db-icon">&#128202;</div>
+                            <h4>STATE_DB</h4>
+                            <p>XCVR Info</p>
+                        </div>
+                        <div class="db-item appl">
+                            <div class="db-icon">&#128241;</div>
+                            <h4>APPL_DB</h4>
+                            <p>Application</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Column: Main Architecture -->
+            <div class="card" style="padding: 35px;">
+                <div class="daemon-box">
+                    <h2>DaemonXcvrd</h2>
+                    <p>Main daemon process orchestrating all transceiver management threads</p>
+                </div>
+
+                <div class="card-title" style="margin-top: 30px;">
+                    <div class="icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">&#9776;</div>
+                    Worker Threads
+                </div>
+                <div class="thread-list">
+                    <div class="thread-item sfp">
+                        <div class="thread-icon">&#128268;</div>
+                        <div class="thread-info">
+                            <h4>SfpStateUpdateTask</h4>
+                            <p>Monitors SFP insert/remove events with state machine</p>
+                        </div>
+                    </div>
+                    <div class="thread-item cmis">
+                        <div class="thread-icon">&#9881;</div>
+                        <div class="thread-info">
+                            <h4>CmisManagerTask</h4>
+                            <p>CMIS transceiver initialization & datapath configuration</p>
+                        </div>
+                    </div>
+                    <div class="thread-item dom">
+                        <div class="thread-icon">&#128200;</div>
+                        <div class="thread-info">
+                            <h4>DomInfoUpdateTask</h4>
+                            <p>Periodic DOM sensor & diagnostic data updates</p>
+                        </div>
+                    </div>
+                    <div class="thread-item dom">
+                        <div class="thread-icon">&#127777;</div>
+                        <div class="thread-info">
+                            <h4>DomThermalInfoUpdateTask</h4>
+                            <p>Thermal monitoring information updates</p>
+                        </div>
+                    </div>
+                    <div class="thread-item sff">
+                        <div class="thread-icon">&#128279;</div>
+                        <div class="thread-info">
+                            <h4>SffManagerTask</h4>
+                            <p>Deterministic link bring-up for SFF modules</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="state-machine">
+                    <div class="card-title">
+                        <div class="icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">&#128260;</div>
+                        SFP State Machine
+                    </div>
+                    <div class="state-flow">
+                        <span class="state init">INIT</span>
+                        <span class="arrow">→</span>
+                        <span class="state process">NORMAL</span>
+                        <span class="arrow">→</span>
+                        <span class="state ready">READY</span>
+                        <span class="arrow">|</span>
+                        <span class="state error">EXIT</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: CMIS Details -->
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">&#128268;</div>
+                    CMIS Module Types
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 25px;">
+                    <span class="state process">QSFP-DD</span>
+                    <span class="state process">OSFP</span>
+                    <span class="state process">OSFP-8X</span>
+                    <span class="state process">QSFP+C</span>
+                </div>
+
+                <div class="card-title">
+                    <div class="icon" style="background: linear-gradient(135deg, #ec4899, #be185d);">&#128736;</div>
+                    Configuration
+                </div>
+                <div style="font-size: 0.85rem; color: #94a3b8; line-height: 1.8;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #22c55e;">&#10003;</span> Laser Frequency
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #22c55e;">&#10003;</span> TX Power
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #22c55e;">&#10003;</span> Host Lane Mask
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #22c55e;">&#10003;</span> Media Lane Mask
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #22c55e;">&#10003;</span> Application Code
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #22c55e;">&#10003;</span> SI Settings
+                    </div>
+                </div>
+
+                <div style="margin-top: 25px;">
+                    <div class="card-title">
+                        <div class="icon" style="background: linear-gradient(135deg, #f97316, #ea580c);">&#9888;</div>
+                        Error Handling
+                    </div>
+                    <div style="font-size: 0.85rem; color: #94a3b8;">
+                        <div style="padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 8px;">
+                            Max Retries: <strong style="color: #f8fafc;">3</strong>
+                        </div>
+                        <div style="padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                            Default Timeout: <strong style="color: #f8fafc;">60s</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CMIS State Machine -->
+        <div class="card cmis-states">
+            <div class="card-title" style="justify-content: center;">
+                <div class="icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">&#128260;</div>
+                CMIS State Machine Flow
+            </div>
+            <div class="cmis-flow">
+                <div class="cmis-state">INSERTED</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state">DP_PRE_INIT</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state">DP_DEINIT</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state">AP_CONF</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state">DP_INIT</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state">DP_TXON</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state">DP_ACTIVATE</div>
+                <span class="cmis-arrow">→</span>
+                <div class="cmis-state active">READY</div>
+            </div>
+        </div>
+
+        <!-- Bottom Section -->
+        <div class="bottom-section">
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon" style="background: linear-gradient(135deg, #7c3aed, #5b21b6);">&#128268;</div>
+                    Transceiver Signal Path
+                </div>
+                <div class="signal-flow">
+                    <div class="signal-node host">
+                        <div class="node-icon">&#128187;</div>
+                        <p>Host TX</p>
+                    </div>
+                    <div class="signal-line"></div>
+                    <div class="signal-node xcvr">
+                        <div class="node-icon">&#128268;</div>
+                        <p>Transceiver</p>
+                    </div>
+                    <div class="signal-line"></div>
+                    <div class="signal-node media">
+                        <div class="node-icon">&#128279;</div>
+                        <p>Media/Fiber</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <div class="icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">&#128200;</div>
+                    DOM Monitoring Data
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;">
+                    <div style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 5px;">&#127777;</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">Temperature</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 5px;">&#9889;</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">Voltage</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 5px;">&#128161;</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">TX/RX Power</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 5px;">&#128200;</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">Bias Current</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 5px;">&#128202;</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">VDM Metrics</div>
+                    </div>
+                    <div style="text-align: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px;">
+                        <div style="font-size: 1.5rem; margin-bottom: 5px;">&#9888;</div>
+                        <div style="font-size: 0.85rem; font-weight: 600;">Thresholds</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Generated with <a href="https://github.com/JimLiu/baoyu-skills">baoyu-skills/infographic</a> style | SONiC Platform Daemons</p>
+        </footer>
+    </div>
+</body>
+</html>

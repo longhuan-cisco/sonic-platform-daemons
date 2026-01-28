@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="50%" style="stop-color:#16213e"/>
+      <stop offset="100%" style="stop-color:#0f3460"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#5b21b6"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="pinkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ec4899"/>
+      <stop offset="100%" style="stop-color:#be185d"/>
+    </linearGradient>
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="50%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#f97316"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.3"/>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="url(#bgGrad)"/>
+
+  <!-- Title -->
+  <text x="600" y="55" text-anchor="middle" font-family="system-ui, sans-serif" font-size="42" font-weight="800" fill="url(#titleGrad)">sonic-xcvrd</text>
+  <text x="600" y="85" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#94a3b8">Transceiver Information Update Daemon for SONiC</text>
+
+  <!-- Main Daemon Box -->
+  <rect x="400" y="110" width="400" height="80" rx="16" fill="url(#purpleGrad)" filter="url(#shadow)"/>
+  <text x="600" y="150" text-anchor="middle" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="white">DaemonXcvrd</text>
+  <text x="600" y="175" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" fill="#e0d6ff">Main daemon orchestrating all transceiver management</text>
+
+  <!-- Connection lines from daemon to threads -->
+  <path d="M 500 190 L 500 220 L 200 220 L 200 260" stroke="#7c3aed" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+  <path d="M 550 190 L 550 240 L 400 240 L 400 260" stroke="#7c3aed" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+  <path d="M 600 190 L 600 260" stroke="#7c3aed" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+  <path d="M 650 190 L 650 240 L 800 240 L 800 260" stroke="#7c3aed" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+  <path d="M 700 190 L 700 220 L 1000 220 L 1000 260" stroke="#7c3aed" stroke-width="2" fill="none" stroke-dasharray="5,5"/>
+
+  <!-- Thread Cards -->
+  <!-- SfpStateUpdateTask -->
+  <rect x="80" y="260" width="240" height="100" rx="12" fill="rgba(255,255,255,0.05)" stroke="#22c55e" stroke-width="2"/>
+  <circle cx="120" cy="295" r="20" fill="url(#greenGrad)"/>
+  <text x="120" y="300" text-anchor="middle" font-size="16" fill="white">&#128268;</text>
+  <text x="150" y="295" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="white">SfpStateUpdateTask</text>
+  <text x="150" y="315" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Monitors SFP insert/remove</text>
+  <text x="150" y="330" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">events with state machine</text>
+
+  <!-- CmisManagerTask -->
+  <rect x="280" y="260" width="240" height="100" rx="12" fill="rgba(255,255,255,0.05)" stroke="#3b82f6" stroke-width="2"/>
+  <circle cx="320" cy="295" r="20" fill="url(#blueGrad)"/>
+  <text x="320" y="300" text-anchor="middle" font-size="16" fill="white">&#9881;</text>
+  <text x="350" y="295" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="white">CmisManagerTask</text>
+  <text x="350" y="315" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">CMIS transceiver init</text>
+  <text x="350" y="330" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">& datapath configuration</text>
+
+  <!-- DomInfoUpdateTask -->
+  <rect x="480" y="260" width="240" height="100" rx="12" fill="rgba(255,255,255,0.05)" stroke="#f97316" stroke-width="2"/>
+  <circle cx="520" cy="295" r="20" fill="url(#orangeGrad)"/>
+  <text x="520" y="300" text-anchor="middle" font-size="16" fill="white">&#128200;</text>
+  <text x="550" y="295" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="white">DomInfoUpdateTask</text>
+  <text x="550" y="315" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Periodic DOM sensor</text>
+  <text x="550" y="330" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">& diagnostic updates</text>
+
+  <!-- DomThermalInfoUpdateTask -->
+  <rect x="680" y="260" width="240" height="100" rx="12" fill="rgba(255,255,255,0.05)" stroke="#f97316" stroke-width="2"/>
+  <circle cx="720" cy="295" r="20" fill="url(#orangeGrad)"/>
+  <text x="720" y="300" text-anchor="middle" font-size="14" fill="white">&#127777;</text>
+  <text x="750" y="295" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="white">DomThermalInfoTask</text>
+  <text x="750" y="315" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Thermal monitoring</text>
+  <text x="750" y="330" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">information updates</text>
+
+  <!-- SffManagerTask -->
+  <rect x="880" y="260" width="240" height="100" rx="12" fill="rgba(255,255,255,0.05)" stroke="#ec4899" stroke-width="2"/>
+  <circle cx="920" cy="295" r="20" fill="url(#pinkGrad)"/>
+  <text x="920" y="300" text-anchor="middle" font-size="16" fill="white">&#128279;</text>
+  <text x="950" y="295" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="white">SffManagerTask</text>
+  <text x="950" y="315" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Deterministic link</text>
+  <text x="950" y="330" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">bring-up for SFF modules</text>
+
+  <!-- SFP State Machine -->
+  <rect x="60" y="400" width="340" height="140" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)"/>
+  <text x="80" y="430" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">SFP State Machine</text>
+
+  <rect x="80" y="450" width="60" height="30" rx="6" fill="#fef3c7"/>
+  <text x="110" y="470" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#92400e">INIT</text>
+  <text x="155" y="470" fill="#64748b" font-size="18">&#8594;</text>
+  <rect x="170" y="450" width="70" height="30" rx="6" fill="#dbeafe"/>
+  <text x="205" y="470" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#1e40af">NORMAL</text>
+  <text x="255" y="470" fill="#64748b" font-size="18">&#8594;</text>
+  <rect x="270" y="450" width="60" height="30" rx="6" fill="#d1fae5"/>
+  <text x="300" y="470" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#065f46">READY</text>
+
+  <text x="80" y="510" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Events: SYSTEM_NOT_READY, SYSTEM_BECOME_READY</text>
+  <text x="80" y="525" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">NORMAL_EVENT, SYSTEM_FAIL</text>
+
+  <!-- CMIS State Machine -->
+  <rect x="420" y="400" width="700" height="140" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)"/>
+  <text x="440" y="430" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">CMIS State Machine Flow</text>
+
+  <!-- CMIS States Row 1 -->
+  <rect x="440" y="450" width="75" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="477" y="468" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">INSERTED</text>
+  <text x="525" y="468" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <rect x="540" y="450" width="85" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="582" y="468" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">DP_PRE_INIT</text>
+  <text x="635" y="468" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <rect x="650" y="450" width="70" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="685" y="468" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">DP_DEINIT</text>
+  <text x="730" y="468" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <rect x="745" y="450" width="65" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="777" y="468" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">AP_CONF</text>
+  <text x="820" y="468" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <!-- CMIS States Row 2 -->
+  <rect x="440" y="490" width="60" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="470" y="508" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">DP_INIT</text>
+  <text x="510" y="508" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <rect x="525" y="490" width="65" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="557" y="508" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">DP_TXON</text>
+  <text x="600" y="508" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <rect x="615" y="490" width="80" height="26" rx="6" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.3)"/>
+  <text x="655" y="508" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="600" fill="#93c5fd">DP_ACTIVATE</text>
+  <text x="705" y="508" fill="#3b82f6" font-size="14">&#8594;</text>
+
+  <rect x="720" y="490" width="60" height="26" rx="6" fill="url(#blueGrad)" filter="url(#glow)"/>
+  <text x="750" y="508" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" font-weight="700" fill="white">READY</text>
+
+  <!-- Module Types -->
+  <rect x="840" y="450" width="260" height="70" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="860" y="475" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="white">CMIS Module Types:</text>
+  <text x="860" y="495" font-family="system-ui, sans-serif" font-size="10" fill="#93c5fd">QSFP-DD  |  OSFP  |  OSFP-8X  |  QSFP+C</text>
+  <text x="860" y="510" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Max Host Lanes: 8 (4 for QSFP+C)</text>
+
+  <!-- Database Section -->
+  <rect x="60" y="560" width="380" height="160" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)"/>
+  <text x="80" y="590" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">&#128190; Database Integration</text>
+
+  <!-- CONFIG_DB -->
+  <rect x="80" y="610" width="100" height="90" rx="10" fill="rgba(0,0,0,0.2)"/>
+  <circle cx="130" cy="645" r="20" fill="url(#orangeGrad)"/>
+  <text x="130" y="650" text-anchor="middle" font-size="14" fill="white">&#9881;</text>
+  <text x="130" y="680" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="white">CONFIG_DB</text>
+  <text x="130" y="695" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Port Config</text>
+
+  <!-- STATE_DB -->
+  <rect x="195" y="610" width="100" height="90" rx="10" fill="rgba(0,0,0,0.2)"/>
+  <circle cx="245" cy="645" r="20" fill="url(#greenGrad)"/>
+  <text x="245" y="650" text-anchor="middle" font-size="14" fill="white">&#128202;</text>
+  <text x="245" y="680" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="white">STATE_DB</text>
+  <text x="245" y="695" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">XCVR Info</text>
+
+  <!-- APPL_DB -->
+  <rect x="310" y="610" width="100" height="90" rx="10" fill="rgba(0,0,0,0.2)"/>
+  <circle cx="360" cy="645" r="20" fill="url(#blueGrad)"/>
+  <text x="360" y="650" text-anchor="middle" font-size="14" fill="white">&#128241;</text>
+  <text x="360" y="680" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="white">APPL_DB</text>
+  <text x="360" y="695" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Application</text>
+
+  <!-- DOM Monitoring Data -->
+  <rect x="460" y="560" width="340" height="160" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)"/>
+  <text x="480" y="590" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">&#128200; DOM Monitoring Data</text>
+
+  <rect x="480" y="610" width="90" height="45" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="525" y="632" text-anchor="middle" font-size="16" fill="white">&#127777;</text>
+  <text x="525" y="648" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Temperature</text>
+
+  <rect x="580" y="610" width="90" height="45" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="625" y="632" text-anchor="middle" font-size="16" fill="white">&#9889;</text>
+  <text x="625" y="648" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Voltage</text>
+
+  <rect x="680" y="610" width="90" height="45" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="725" y="632" text-anchor="middle" font-size="16" fill="white">&#128161;</text>
+  <text x="725" y="648" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">TX/RX Power</text>
+
+  <rect x="480" y="665" width="90" height="45" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="525" y="687" text-anchor="middle" font-size="16" fill="white">&#128200;</text>
+  <text x="525" y="703" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Bias Current</text>
+
+  <rect x="580" y="665" width="90" height="45" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="625" y="687" text-anchor="middle" font-size="16" fill="white">&#128202;</text>
+  <text x="625" y="703" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">VDM Metrics</text>
+
+  <rect x="680" y="665" width="90" height="45" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="725" y="687" text-anchor="middle" font-size="16" fill="white">&#9888;</text>
+  <text x="725" y="703" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#94a3b8">Thresholds</text>
+
+  <!-- Key Features -->
+  <rect x="820" y="560" width="300" height="160" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)"/>
+  <text x="840" y="590" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">&#9881; Key Features</text>
+
+  <text x="850" y="620" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Hot-Swap Detection</text>
+  <text x="850" y="640" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; DOM Monitoring</text>
+  <text x="850" y="660" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Multi-ASIC Support</text>
+  <text x="850" y="680" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; VDM Support</text>
+  <text x="850" y="700" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Media Settings Config</text>
+
+  <text x="990" y="620" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Signal Integrity</text>
+  <text x="990" y="640" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Laser Frequency</text>
+  <text x="990" y="660" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; TX Power Config</text>
+  <text x="990" y="680" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Lane Masking</text>
+  <text x="990" y="700" font-family="system-ui, sans-serif" font-size="11" fill="white">&#10003; Fast Reboot</text>
+
+  <!-- Signal Path -->
+  <rect x="60" y="740" width="1060" height="100" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)"/>
+  <text x="80" y="775" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">&#128268; Transceiver Signal Path</text>
+
+  <!-- Host -->
+  <circle cx="200" cy="810" r="25" fill="url(#purpleGrad)"/>
+  <text x="200" y="815" text-anchor="middle" font-size="16" fill="white">&#128187;</text>
+  <text x="200" y="855" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Host TX</text>
+
+  <!-- Arrow 1 -->
+  <line x1="240" y1="810" x2="380" y2="810" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>
+  <polygon points="385,810 370,805 370,815" fill="rgba(255,255,255,0.3)"/>
+  <text x="310" y="800" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#64748b">Host Lanes</text>
+
+  <!-- Transceiver -->
+  <rect x="390" y="785" width="120" height="50" rx="10" fill="url(#orangeGrad)" filter="url(#shadow)"/>
+  <text x="450" y="815" text-anchor="middle" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="white">Transceiver</text>
+  <text x="450" y="855" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">CMIS/SFF Module</text>
+
+  <!-- Arrow 2 -->
+  <line x1="520" y1="810" x2="660" y2="810" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>
+  <polygon points="665,810 650,805 650,815" fill="rgba(255,255,255,0.3)"/>
+  <text x="590" y="800" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#64748b">Media Lanes</text>
+
+  <!-- Media -->
+  <circle cx="700" cy="810" r="25" fill="url(#greenGrad)"/>
+  <text x="700" y="815" text-anchor="middle" font-size="16" fill="white">&#128279;</text>
+  <text x="700" y="855" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Media/Fiber</text>
+
+  <!-- Config Details -->
+  <rect x="780" y="785" width="320" height="50" rx="8" fill="rgba(0,0,0,0.2)"/>
+  <text x="800" y="807" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Max Retries: <tspan fill="white">3</tspan>  |  Default Timeout: <tspan fill="white">60s</tspan></text>
+  <text x="800" y="825" font-family="system-ui, sans-serif" font-size="10" fill="#94a3b8">Poll Period: <tspan fill="white">60s</tspan>  |  SFP Event: <tspan fill="white">1000ms</tspan></text>
+
+  <!-- Footer -->
+  <text x="600" y="875" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Generated with baoyu-skills/infographic style | SONiC Platform Daemons</text>
+</svg>
