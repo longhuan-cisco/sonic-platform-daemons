@@ -383,6 +383,12 @@ def get_media_settings_for_speed(settings_dict, lane_speed_key):
 def get_media_settings_value(physical_port, key):
     global_default = {}
 
+    # Priority order for traditional media settings:
+    #   1. GLOBAL explicit match (vendor/media/speed)
+    #   2. PORT explicit match
+    #   3. PORT Default
+    #   4. GLOBAL Default (last-resort fallback)
+
     # Check global media settings first (can apply to ranges/lists of ports)
     if GLOBAL_MEDIA_SETTINGS_KEY in g_dict:
         result, global_default = GlobalMediaSettingsParser().parse(
