@@ -116,6 +116,84 @@ class PortMediaSettingsParser(MediaSettingsParserBase):
         return {}, {}
 
 class CustomMediaSettingsParser(MediaSettingsParserBase):
+    @staticmethod
+    def is_port_selected(port_selector, physical_port):
+        """
+        Return True if the port selector matches the given physical_port.
+
+        Supports:
+          - Single port: "7"
+          - Range: "1-4"
+          - List / list-of-ranges: "1,3-4,8"
+        Whitespace is ignored. Non-string selectors return False.
+        """
+        if not isinstance(port_selector, str):
+            helper_logger.log_notice("Malformed port selector '{}'".format(port_selector))
+            return False
+
+        for token in port_selector.split(COMMA_SEPARATOR):
+            token = token.strip()
+            if not token:
+                helper_logger.log_notice(
+                    "Malformed port selector token '' in '{}'".format(port_selector)
+                )
+                continue
+
+            if RANGE_SEPARATOR in token:
+                start_str, end_str = token.split(RANGE_SEPARATOR, 1)
+            else:
+                start_str = end_str = token
+
+            try:
+                start = int(start_str.strip())
+                end = int(end_str.strip())
+            except ValueError:
+                helper_logger.log_notice(
+                    "Malformed port selector token '{}' in '{}'".format(token, port_selector)
+                )
+                continue
+
+            if start <= physical_port <= end:
+                return True
+
+        return False
+
+    @staticmethod
+    def to_db_value(custom_media_dict, lane_count, subport_num):
+        """
+        Convert custom SerDes attributes to the JSON string used in APP DB.
+
+        Args:
+            custom_media_dict: dictionary containing custom SerDes settings for all lanes of the port
+            lane_count: number of lanes for this subport
+            subport_num: subport number (1-based), 0 for non-breakout case
+
+        Returns:
+            JSON string for custom SerDes attributes, or None if no custom attributes are present.
+        """
+        if not custom_media_dict:
+            return None
+
+        attrs_list = []
+
+        for key, value in custom_media_dict.items():
+            if not isinstance(key, str) or not key.startswith(CUSTOM_SERDES_ATTR_PREFIX):
+                continue
+
+            attrs_list.append({
+                key[len(CUSTOM_SERDES_ATTR_PREFIX):]: {
+                    'value': get_serdes_si_setting_val(value, lane_count, subport_num)
+                }
+            })
+
+        if not attrs_list:
+            return None
+
+        return json.dumps(
+            {CUSTOM_SERDES_ATTRS_TOP_LEVEL_KEY: attrs_list},
+            separators=(',', ':')
+        )
+
     def parse(self, settings, physical_port, key):
         if not isinstance(settings, dict) or not settings:
             return {}, {}
@@ -124,7 +202,7 @@ class CustomMediaSettingsParser(MediaSettingsParserBase):
         lane_speed_key = key[LANE_SPEED_KEY]
 
         for port_selector, media_dict in settings.items():
-            if not is_port_selected(port_selector, physical_port):
+            if not self.is_port_selected(port_selector, physical_port):
                 continue
 
             media_settings = self.get_media_settings(key, media_dict)
@@ -264,48 +342,6 @@ def is_si_per_speed_supported(media_dict):
     return LANE_SPEED_KEY_PREFIX in list(media_dict.keys())[0]
 
 
-def is_port_selected(port_selector, physical_port):
-    """
-    Return True if the port selector matches the given physical_port.
-
-    Supports:
-      - Single port: "7"
-      - Range: "1-4"
-      - List / list-of-ranges: "1,3-4,8"
-    Whitespace is ignored. Non-string selectors return False.
-    """
-    if not isinstance(port_selector, str):
-        helper_logger.log_notice("Malformed port selector '{}'".format(port_selector))
-        return False
-
-    for token in port_selector.split(COMMA_SEPARATOR):
-        token = token.strip()
-        if not token:
-            helper_logger.log_notice(
-                "Malformed port selector token '' in '{}'".format(port_selector)
-            )
-            continue
-
-        if RANGE_SEPARATOR in token:
-            start_str, end_str = token.split(RANGE_SEPARATOR, 1)
-        else:
-            start_str = end_str = token
-
-        try:
-            start = int(start_str.strip())
-            end = int(end_str.strip())
-        except ValueError:
-            helper_logger.log_notice(
-                "Malformed port selector token '{}' in '{}'".format(token, port_selector)
-            )
-            continue
-
-        if start <= physical_port <= end:
-            return True
-
-    return False
-
-
 def get_serdes_si_setting_val(val_dict, lane_count, subport_num=0):
     """
     Get ASIC side SerDes SI settings for the given logical port (subport)
@@ -439,42 +475,6 @@ def get_speed_lane_count_and_subport(port, cfg_port_tbl):
     return port_speed, lane_count, subport_num
 
 
-def get_custom_serdes_attrs(custom_media_dict, lane_count, subport_num):
-    """
-    Convert custom SerDes attributes to the JSON string used in APP DB.
-
-    Args:
-        custom_media_dict: dictionary containing custom SerDes settings for all lanes of the port
-        lane_count: number of lanes for this subport
-        subport_num: subport number (1-based), 0 for non-breakout case
-
-    Returns:
-        JSON string for custom SerDes attributes, or None if no custom attributes are present.
-    """
-    if not custom_media_dict:
-        return None
-
-    attrs_list = []
-
-    for key, value in custom_media_dict.items():
-        if not isinstance(key, str) or not key.startswith(CUSTOM_SERDES_ATTR_PREFIX):
-            continue
-
-        attrs_list.append({
-            key[len(CUSTOM_SERDES_ATTR_PREFIX):]: {
-                'value': get_serdes_si_setting_val(value, lane_count, subport_num)
-            }
-        })
-
-    if not attrs_list:
-        return None
-
-    return json.dumps(
-        {CUSTOM_SERDES_ATTRS_TOP_LEVEL_KEY: attrs_list},
-        separators=(',', ':')
-    )
-
-
 def resolve_media_settings_for_db(physical_port, key, lane_count, subport_num):
     """
     Resolve the final APP_DB field/value payload for a port.
@@ -488,6 +488,10 @@ def resolve_media_settings_for_db(physical_port, key, lane_count, subport_num):
     Returns:
         Dictionary containing the final APP_DB field/value payload.
     """
+    # Keep traditional and custom lookups separate because they can coexist on
+    # the same port but resolve to different APP_DB shapes: traditional fields
+    # stay as normal per-attribute entries, while custom settings are later
+    # aggregated into a single 'custom_serdes_attrs' JSON payload.
     media_dict = get_media_settings_value(physical_port, key)
     custom_media_dict = get_custom_media_settings_value(physical_port, key)
 
@@ -502,7 +506,8 @@ def resolve_media_settings_for_db(physical_port, key, lane_count, subport_num):
         else:
             payload[media_key] = media_value
 
-    custom_serdes_attrs = get_custom_serdes_attrs(custom_media_dict, lane_count, subport_num)
+    custom_serdes_attrs = CustomMediaSettingsParser.to_db_value(
+        custom_media_dict, lane_count, subport_num)
     if custom_serdes_attrs is not None:
         payload[CUSTOM_SERDES_ATTRS_KEY_IN_DB] = custom_serdes_attrs
 

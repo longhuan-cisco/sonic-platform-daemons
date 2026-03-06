@@ -1971,21 +1971,22 @@ class TestXcvrdScript(object):
             None,
         ),
     ])
-    def test_get_custom_serdes_attrs(self, media_dict, lane_count, subport_num, expected):
-        assert expected == media_settings_parser.get_custom_serdes_attrs(media_dict, lane_count, subport_num)
+    def test_custom_media_settings_to_db_value(self, media_dict, lane_count, subport_num, expected):
+        assert expected == media_settings_parser.CustomMediaSettingsParser.to_db_value(
+            media_dict, lane_count, subport_num)
 
-    def test_is_port_selected(self):
-        assert media_settings_parser.is_port_selected('1, 3-4, 8', 8)
-        assert media_settings_parser.is_port_selected('1,3-4,8', 4)
-        assert media_settings_parser.is_port_selected('01', 1)
-        assert media_settings_parser.is_port_selected('1 - 3', 2)
-        assert not media_settings_parser.is_port_selected('1,3-4,8', 2)
-        assert not media_settings_parser.is_port_selected('   ', 1)
-        assert not media_settings_parser.is_port_selected('1,,3', 2)
-        assert not media_settings_parser.is_port_selected('1-a', 1)
-        assert not media_settings_parser.is_port_selected('1-2-3', 2)
-        assert not media_settings_parser.is_port_selected('a', 2)
-        assert not media_settings_parser.is_port_selected(123, 1)
+    def test_custom_media_settings_is_port_selected(self):
+        assert media_settings_parser.CustomMediaSettingsParser.is_port_selected('1, 3-4, 8', 8)
+        assert media_settings_parser.CustomMediaSettingsParser.is_port_selected('1,3-4,8', 4)
+        assert media_settings_parser.CustomMediaSettingsParser.is_port_selected('01', 1)
+        assert media_settings_parser.CustomMediaSettingsParser.is_port_selected('1 - 3', 2)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected('1,3-4,8', 2)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected('   ', 1)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected('1,,3', 2)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected('1-a', 1)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected('1-2-3', 2)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected('a', 2)
+        assert not media_settings_parser.CustomMediaSettingsParser.is_port_selected(123, 1)
 
     def test_get_custom_media_settings_value(self):
         key = {
