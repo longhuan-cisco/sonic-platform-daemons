@@ -2070,6 +2070,44 @@ class TestXcvrdScript(object):
         parser = media_settings_parser.CustomMediaSettingsParser()
         assert parser.parse(settings, 7, key) == ({}, {})
 
+    @pytest.mark.parametrize("media_dict, custom_media_dict, lane_count, subport_num, expected", [
+        (
+            {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},
+            {},
+            2, 2,
+            {'main': '0x13,0x14'},
+        ),
+        (
+            {},
+            {'CUSTOM:XYZ': {'lane0': 10, 'lane1': 11, 'lane2': 12, 'lane3': 13}},
+            2, 2,
+            {CUSTOM_SERDES_ATTRS_KEY_IN_DB: '{"attributes":[{"XYZ":{"value":[12,13]}}]}'},
+        ),
+        (
+            {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},
+            {'CUSTOM:ABC': {'lane0': 1, 'lane1': 2, 'lane2': 3, 'lane3': 4}},
+            2, 2,
+            {
+                'main': '0x13,0x14',
+                CUSTOM_SERDES_ATTRS_KEY_IN_DB: '{"attributes":[{"ABC":{"value":[3,4]}}]}',
+            },
+        ),
+        (
+            {},
+            {},
+            2, 2,
+            {},
+        ),
+    ])
+    def test_resolve_media_settings_for_db(self, media_dict, custom_media_dict, lane_count, subport_num, expected):
+        with patch.multiple(
+            'xcvrd.xcvrd_utilities.media_settings_parser',
+            get_media_settings_value=MagicMock(return_value=media_dict),
+            get_custom_media_settings_value=MagicMock(return_value=custom_media_dict),
+        ):
+            result = media_settings_parser.resolve_media_settings_for_db(7, {}, lane_count, subport_num)
+            assert result == expected
+
     @patch('xcvrd.xcvrd_utilities.optics_si_parser.g_optics_si_dict', optics_si_settings_dict)
     @patch('xcvrd.xcvrd_utilities.common._wrapper_get_presence', MagicMock(return_value=True))
     def test_fetch_optics_si_setting(self):

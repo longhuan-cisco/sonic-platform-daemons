@@ -475,6 +475,40 @@ def get_custom_serdes_attrs(custom_media_dict, lane_count, subport_num):
     )
 
 
+def resolve_media_settings_for_db(physical_port, key, lane_count, subport_num):
+    """
+    Resolve the final APP_DB field/value payload for a port.
+
+    Args:
+        physical_port: physical port number for this logical port
+        key: media settings key dictionary with vendor/media and lane speed info
+        lane_count: number of lanes for this subport
+        subport_num: subport number (1-based), 0 for non-breakout case
+
+    Returns:
+        Dictionary containing the final APP_DB field/value payload.
+    """
+    media_dict = get_media_settings_value(physical_port, key)
+    custom_media_dict = get_custom_media_settings_value(physical_port, key)
+
+    if not media_dict and not custom_media_dict:
+        return {}
+
+    payload = {}
+
+    for media_key, media_value in media_dict.items():
+        if isinstance(media_value, dict):
+            payload[media_key] = get_serdes_si_setting_val_str(media_value, lane_count, subport_num)
+        else:
+            payload[media_key] = media_value
+
+    custom_serdes_attrs = get_custom_serdes_attrs(custom_media_dict, lane_count, subport_num)
+    if custom_serdes_attrs is not None:
+        payload[CUSTOM_SERDES_ATTRS_KEY_IN_DB] = custom_serdes_attrs
+
+    return payload
+
+
 def notify_media_setting(logical_port_name, transceiver_dict,
                          xcvr_table_helper, port_mapping):
 
@@ -520,31 +554,19 @@ def notify_media_setting(logical_port_name, transceiver_dict,
         ganged_member_num += 1
         key = get_media_settings_key(physical_port, transceiver_dict, port_speed, lane_count)
         helper_logger.log_notice("Retrieving media settings for port {} speed {} num_lanes {}, using key {}".format(logical_port_name, port_speed, lane_count, key))
-        media_dict = get_media_settings_value(physical_port, key)
-        custom_media_dict = get_custom_media_settings_value(physical_port, key)
+        payload = resolve_media_settings_for_db(physical_port, key, lane_count, subport_num)
 
-        if not media_dict and not custom_media_dict:
+        if not payload:
             helper_logger.log_info("Error in obtaining media setting for {}".format(logical_port_name))
             return
 
-        custom_serdes_attrs = get_custom_serdes_attrs(custom_media_dict, lane_count, subport_num)
-        total_fields = len(media_dict) + (1 if custom_serdes_attrs is not None else 0)
-        fvs = swsscommon.FieldValuePairs(total_fields)
+        fvs = swsscommon.FieldValuePairs(len(payload))
 
         index = 0
         helper_logger.log_notice("Publishing ASIC-side SI setting for port {} in APP_DB:".format(logical_port_name))
-        for media_key in media_dict:
-            if type(media_dict[media_key]) is dict:
-                val_str = get_serdes_si_setting_val_str(media_dict[media_key], lane_count, subport_num)
-            else:
-                val_str = media_dict[media_key]
+        for media_key, val_str in payload.items():
             helper_logger.log_notice("{}:({},{}) ".format(index, str(media_key), str(val_str)))
             fvs[index] = (str(media_key), str(val_str))
-            index += 1
-
-        if custom_serdes_attrs is not None:
-            helper_logger.log_notice("{}:({},{}) ".format(index, CUSTOM_SERDES_ATTRS_KEY_IN_DB, custom_serdes_attrs))
-            fvs[index] = (CUSTOM_SERDES_ATTRS_KEY_IN_DB, custom_serdes_attrs)
             index += 1
 
         xcvr_table_helper.get_app_port_tbl(asic_index).set(port_name, fvs)
