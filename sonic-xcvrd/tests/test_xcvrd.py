@@ -2071,6 +2071,27 @@ class TestXcvrdScript(object):
         parser = media_settings_parser.CustomMediaSettingsParser()
         assert parser.parse(settings, 7, key) == ({}, {})
 
+    @pytest.mark.parametrize("media_dict, lane_count, subport_num, expected", [
+        (
+            {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},
+            2, 2,
+            {'main': '0x13,0x14'},
+        ),
+        (
+            {'main': {'lane0': '0x11', 'lane1': '0x12'}, 'los_thresh': '7'},
+            2, 0,
+            {'main': '0x11,0x12', 'los_thresh': '7'},
+        ),
+        (
+            {},
+            2, 2,
+            {},
+        ),
+    ])
+    def test_media_settings_to_db_value(self, media_dict, lane_count, subport_num, expected):
+        assert expected == media_settings_parser.MediaSettingsParserBase.to_db_value(
+            media_dict, lane_count, subport_num)
+
     @pytest.mark.parametrize("media_dict, custom_media_dict, lane_count, subport_num, expected", [
         (
             {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},

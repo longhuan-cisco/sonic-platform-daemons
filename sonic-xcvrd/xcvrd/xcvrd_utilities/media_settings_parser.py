@@ -65,6 +65,34 @@ class MediaSettingsParserBase(ABC):
                 return get_media_settings_for_speed(media_dict[dict_key], key[LANE_SPEED_KEY])
         return None
 
+    @staticmethod
+    def to_db_value(media_dict, lane_count, subport_num):
+        """
+        Convert traditional media settings to APP DB field/value pairs.
+
+        Args:
+            media_dict: dictionary containing traditional media settings
+            lane_count: number of lanes for this subport
+            subport_num: subport number (1-based), 0 for non-breakout case
+
+        Returns:
+            Dictionary containing APP DB-ready field/value pairs.
+        """
+        if not media_dict:
+            return {}
+
+        payload = {}
+
+        for media_key, media_value in media_dict.items():
+            if isinstance(media_value, dict):
+                payload[media_key] = get_serdes_si_setting_val_str(
+                    media_value, lane_count, subport_num
+                )
+            else:
+                payload[media_key] = media_value
+
+        return payload
+
 class GlobalMediaSettingsParser(MediaSettingsParserBase):
     def parse(self, settings, physical_port, key):
         default_dict = {}
@@ -498,13 +526,9 @@ def resolve_media_settings_for_db(physical_port, key, lane_count, subport_num):
     if not media_dict and not custom_media_dict:
         return {}
 
-    payload = {}
-
-    for media_key, media_value in media_dict.items():
-        if isinstance(media_value, dict):
-            payload[media_key] = get_serdes_si_setting_val_str(media_value, lane_count, subport_num)
-        else:
-            payload[media_key] = media_value
+    payload = MediaSettingsParserBase.to_db_value(
+        media_dict, lane_count, subport_num
+    )
 
     custom_serdes_attrs = CustomMediaSettingsParser.to_db_value(
         custom_media_dict, lane_count, subport_num)
