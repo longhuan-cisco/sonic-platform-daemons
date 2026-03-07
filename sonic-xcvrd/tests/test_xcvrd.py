@@ -1760,9 +1760,9 @@ class TestXcvrdScript(object):
     # Test 20: Media key should be prioritized over medium lane speed key in PORT_MEDIA_SETTINGS
     (media_settings_media_priority_over_medium_lane_port, 7, {'vendor_key': 'VENDOR_NOMATCH', 'media_key': 'QSFP-DD-400GBASE-DR4', 'lane_speed_key': 'MISSING', 'medium_lane_speed_key': 'COPPER100'}, {'idriver': {'lane0': '0x00000066', 'lane1': '0x00000077', 'lane2': '0x00000088', 'lane3': '0x00000099'}, 'pre1': {'lane0': '0x00000066', 'lane1': '0x00000077', 'lane2': '0x00000088', 'lane3': '0x00000099'}, 'ob_m2lp': {'lane0': '0x00000066', 'lane1': '0x00000077', 'lane2': '0x00000088', 'lane3': '0x00000099'}})
     ])
-    def test_get_media_settings_value(self, media_settings_dict, port, key, expected):
+    def test_get_traditional_media_settings_value(self, media_settings_dict, port, key, expected):
         with patch('xcvrd.xcvrd_utilities.media_settings_parser.g_dict', media_settings_dict):
-            result = media_settings_parser.get_media_settings_value(port, key)
+            result = media_settings_parser.get_traditional_media_settings_value(port, key)
             assert result == expected
 
     @patch('xcvrd.xcvrd_utilities.common.platform_chassis')
@@ -1864,7 +1864,7 @@ class TestXcvrdScript(object):
             }
         }
         with patch.multiple('xcvrd.xcvrd_utilities.media_settings_parser',
-                            get_media_settings_value=MagicMock(return_value={}),
+                            get_traditional_media_settings_value=MagicMock(return_value={}),
                             get_custom_media_settings_value=MagicMock(return_value=custom_media_dict)):
             media_settings_parser.notify_media_setting('Ethernet0', transceiver_dict, xcvr_table_helper, port_mapping)
 
@@ -2033,7 +2033,7 @@ class TestXcvrdScript(object):
         }
         with patch('xcvrd.xcvrd_utilities.media_settings_parser.g_dict',
                    media_settings_custom_attrs_with_port_and_global):
-            result = media_settings_parser.get_media_settings_value(7, key)
+            result = media_settings_parser.get_traditional_media_settings_value(7, key)
             assert result == {
                 'pre1': {'lane0': '0x00000002', 'lane1': '0x00000002'},
                 'main': {'lane0': '0x00000020', 'lane1': '0x00000020'},
@@ -2124,7 +2124,7 @@ class TestXcvrdScript(object):
     def test_resolve_media_settings_for_db(self, media_dict, custom_media_dict, lane_count, subport_num, expected):
         with patch.multiple(
             'xcvrd.xcvrd_utilities.media_settings_parser',
-            get_media_settings_value=MagicMock(return_value=media_dict),
+            get_traditional_media_settings_value=MagicMock(return_value=media_dict),
             get_custom_media_settings_value=MagicMock(return_value=custom_media_dict),
         ):
             result = media_settings_parser.resolve_media_settings_for_db(7, {}, lane_count, subport_num)

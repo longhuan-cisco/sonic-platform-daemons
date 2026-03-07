@@ -444,7 +444,27 @@ def get_media_settings_for_speed(settings_dict, lane_speed_key):
     return settings_dict.get(LANE_SPEED_DEFAULT_KEY, {})
 
 
-def get_media_settings_value(physical_port, key):
+def get_traditional_media_settings_value(physical_port, key):
+    """
+    Resolve traditional media settings for a physical port.
+
+    Traditional settings are selected from GLOBAL_MEDIA_SETTINGS and
+    PORT_MEDIA_SETTINGS using the standard precedence order, and the returned
+    value is the raw media-settings dictionary before APP_DB serialization.
+
+    Args:
+        physical_port: physical port number for this logical port
+        key: media settings key dictionary with vendor/media and lane speed info
+
+    Returns:
+        Dictionary containing the matched traditional media settings before
+        APP_DB serialization. Returns {} if no traditional settings match.
+
+    Example:
+        A matching traditional profile may return:
+        {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13',
+                  'lane3': '0x14'}}
+    """
     global_default = {}
 
     # Priority order for traditional media settings:
@@ -477,6 +497,26 @@ def get_media_settings_value(physical_port, key):
 
 
 def get_custom_media_settings_value(physical_port, key):
+    """
+    Resolve custom media settings for a physical port.
+
+    Custom settings are selected only from CUSTOM_MEDIA_SETTINGS and the
+    returned value is the raw custom-attribute dictionary before it is
+    converted to the APP_DB custom_serdes_attrs payload.
+
+    Args:
+        physical_port: physical port number for this logical port
+        key: media settings key dictionary with vendor/media and lane speed info
+
+    Returns:
+        Dictionary containing the matched custom media settings before they are
+        converted to the APP_DB custom_serdes_attrs payload. Returns {} if no
+        custom settings match.
+
+    Example:
+        A matching custom profile may return:
+        {'CUSTOM:ABC': {'lane0': 1, 'lane1': 2, 'lane2': 3, 'lane3': 4}}
+    """
     custom_settings = g_dict.get(CUSTOM_MEDIA_SETTINGS_KEY)
     if not isinstance(custom_settings, dict) or not custom_settings:
         return {}
@@ -515,12 +555,22 @@ def resolve_media_settings_for_db(physical_port, key, lane_count, subport_num):
 
     Returns:
         Dictionary containing the final APP_DB field/value payload.
+
+    Example:
+        If traditional settings resolve to:
+        {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13',
+                  'lane3': '0x14'}}
+        and custom settings resolve to:
+        {'CUSTOM:ABC': {'lane0': 1, 'lane1': 2, 'lane2': 3, 'lane3': 4}}
+        then for lane_count=2 and subport_num=2 this function returns:
+        {'main': '0x13,0x14',
+         'custom_serdes_attrs': '{"attributes":[{"ABC":{"value":[3,4]}}]}'}
     """
     # Keep traditional and custom lookups separate because they can coexist on
     # the same port but resolve to different APP_DB shapes: traditional fields
     # stay as normal per-attribute entries, while custom settings are later
     # aggregated into a single 'custom_serdes_attrs' JSON payload.
-    media_dict = get_media_settings_value(physical_port, key)
+    media_dict = get_traditional_media_settings_value(physical_port, key)
     custom_media_dict = get_custom_media_settings_value(physical_port, key)
 
     if not media_dict and not custom_media_dict:
