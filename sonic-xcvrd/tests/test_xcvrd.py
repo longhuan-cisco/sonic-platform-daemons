@@ -5711,6 +5711,12 @@ class TestXcvrdScript(object):
         subport_num = 2
         media_str = get_serdes_si_setting_val_str(lane_dict, lane_count, subport_num)
         assert media_str == 'c,d'
+        # non-string lane values are coerced defensively for string output
+        lane_dict = {'lane0': 1, 'lane1': 2, 'lane2': 3, 'lane3': 4}
+        lane_count = 2
+        subport_num = 2
+        media_str = get_serdes_si_setting_val_str(lane_dict, lane_count, subport_num)
+        assert media_str == '3,4'
 
     class MockPortMapping:
         logical_port_list = [0, 1, 2]

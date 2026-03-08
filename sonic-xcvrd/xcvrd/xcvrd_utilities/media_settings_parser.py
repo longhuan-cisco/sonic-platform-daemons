@@ -410,7 +410,7 @@ def get_serdes_si_setting_val_str(val_dict, lane_count, subport_num=0):
         string containing SerDes settings for the given subport, separated by comma
         e.g. '0x1f,0x1f,0x1f,0x1f'
     """
-    return ','.join(get_serdes_si_setting_val(val_dict, lane_count, subport_num))
+    return ','.join(str(val) for val in get_serdes_si_setting_val(val_dict, lane_count, subport_num))
 
 
 def get_media_settings_for_speed(settings_dict, lane_speed_key):
