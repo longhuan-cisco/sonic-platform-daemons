@@ -226,7 +226,7 @@ class CustomMediaSettingsParser(MediaSettingsParserBase):
         if not isinstance(settings, dict) or not settings:
             return {}, {}
 
-        default_dict = None
+        default_dict = {}
         lane_speed_key = key[LANE_SPEED_KEY]
 
         for port_selector, media_dict in settings.items():
@@ -234,12 +234,12 @@ class CustomMediaSettingsParser(MediaSettingsParserBase):
                 continue
 
             media_settings = self.get_media_settings(key, media_dict)
-            if media_settings is not None:
+            if media_settings:
                 return media_settings, {}
-            if DEFAULT_KEY in media_dict and default_dict is None:
+            if DEFAULT_KEY in media_dict and not default_dict:
                 default_dict = get_media_settings_for_speed(media_dict[DEFAULT_KEY], lane_speed_key)
 
-        return {}, default_dict or {}
+        return {}, default_dict
 
 
 def load_media_settings():

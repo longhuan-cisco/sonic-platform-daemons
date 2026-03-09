@@ -351,6 +351,23 @@ media_settings_custom_attrs_medium_lane = {
     }
 }
 
+media_settings_custom_attrs_empty_explicit_then_default = {
+    'CUSTOM_MEDIA_SETTINGS': {
+        '7-9': {
+            'QSFP-DD-active_cable_media_interface': {
+                'speed:200GAUI-4': {
+                    'CUSTOM:XYZ': custom_serdes_attrs_xyz_10,
+                },
+            },
+            'Default': {
+                'speed:100GAUI-2': {
+                    'CUSTOM:XYZ': custom_serdes_attrs_xyz_20,
+                },
+            },
+        },
+    }
+}
+
 def gen_cmis_lanes_dict(key_format_str, value, one_based=True):
     start_idx = 1 if one_based else 0
     lanes_dict = {}
@@ -2023,6 +2040,13 @@ class TestXcvrdScript(object):
         with patch('xcvrd.xcvrd_utilities.media_settings_parser.g_dict', media_settings_custom_attrs_non_string_selector):
             result = media_settings_parser.get_custom_media_settings_value(9, key)
             assert result == {}
+
+        with patch('xcvrd.xcvrd_utilities.media_settings_parser.g_dict',
+                   media_settings_custom_attrs_empty_explicit_then_default):
+            result = media_settings_parser.get_custom_media_settings_value(8, key)
+            assert result == {
+                'CUSTOM:XYZ': custom_serdes_attrs_xyz_20,
+            }
 
     def test_custom_media_settings_mixed_with_port_and_global(self):
         key = {
