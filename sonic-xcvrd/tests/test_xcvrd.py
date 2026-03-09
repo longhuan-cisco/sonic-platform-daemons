@@ -53,6 +53,9 @@ os.environ["XCVRD_UNIT_TESTING"] = "1"
 with open(os.path.join(test_path, 'media_settings.json'), 'r') as f:
     media_settings_dict = json.load(f)
 
+with open(os.path.join(test_path, 'gearbox_media_settings.json'), 'r') as f:
+    gearbox_media_settings_dict = json.load(f)
+
 media_settings_with_comma_dict = copy.deepcopy(media_settings_dict)
 global_media_settings = media_settings_with_comma_dict['GLOBAL_MEDIA_SETTINGS'].pop('1-32')
 media_settings_with_comma_dict['GLOBAL_MEDIA_SETTINGS']['1-5,6,7-20,21-32'] = global_media_settings
@@ -1861,6 +1864,7 @@ class TestXcvrdScript(object):
         xcvr_table_helper = MagicMock()
         xcvr_table_helper.is_npu_si_settings_update_required = MagicMock(return_value=True)
         xcvr_table_helper.get_cfg_port_tbl = MagicMock(return_value=MagicMock())
+        xcvr_table_helper.get_gearbox_line_lanes_dict = MagicMock(return_value={})
         app_port_tbl = MagicMock()
         xcvr_table_helper.get_app_port_tbl = MagicMock(return_value=app_port_tbl)
         state_port_tbl = MagicMock()
@@ -1901,6 +1905,7 @@ class TestXcvrdScript(object):
         xcvr_table_helper = MagicMock()
         xcvr_table_helper.is_npu_si_settings_update_required = MagicMock(return_value=True)
         xcvr_table_helper.get_cfg_port_tbl = MagicMock(return_value=MagicMock())
+        xcvr_table_helper.get_gearbox_line_lanes_dict = MagicMock(return_value={})
         app_port_tbl = MagicMock()
         xcvr_table_helper.get_app_port_tbl = MagicMock(return_value=app_port_tbl)
         state_port_tbl = MagicMock()
@@ -1935,6 +1940,45 @@ class TestXcvrdScript(object):
             'regn_bfm1n': '0x000000aa,0x000000aa',
             CUSTOM_SERDES_ATTRS_KEY_IN_DB: expected_custom,
         }
+
+    @patch('xcvrd.xcvrd_utilities.common._wrapper_get_presence', MagicMock(return_value=True))
+    @patch('xcvrd.xcvrd.XcvrTableHelper', MagicMock())
+    @patch('xcvrd.xcvrd.XcvrTableHelper.get_cfg_port_tbl', MagicMock())
+    @patch('xcvrd.xcvrd_utilities.media_settings_parser.g_dict', gearbox_media_settings_dict)
+    @patch('xcvrd.xcvrd_utilities.media_settings_parser.get_speed_lane_count_and_subport', MagicMock(return_value=(400000, 4, 0)))
+    def test_notify_media_setting_with_gearbox(self):
+        """
+        Verify notify_media_setting() preserves gearbox line-side lane widths.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        # Test COPPER50 with gearbox (8 line lanes, 4 system lanes)
+        with patch('xcvrd.xcvrd_utilities.media_settings_parser.get_media_settings_key',
+                   MagicMock(return_value={'vendor_key': 'TEST-VENDOR', 'media_key': 'TEST-MEDIA',
+                                          'lane_speed_key': 'speed:50G', 'medium_lane_speed_key': 'COPPER50'})):
+            self._check_notify_media_setting_with_gearbox(1, 8, 4)
+
+        # Test OPTICAL50 with gearbox (8 line lanes, 4 system lanes)
+        with patch('xcvrd.xcvrd_utilities.media_settings_parser.get_media_settings_key',
+                   MagicMock(return_value={'vendor_key': 'TEST-VENDOR', 'media_key': 'TEST-MEDIA',
+                                          'lane_speed_key': 'speed:50G', 'medium_lane_speed_key': 'OPTICAL50'})):
+            self._check_notify_media_setting_with_gearbox(1, 8, 4)
+
+        # Test COPPER25 with gearbox (4 line lanes, 4 system lanes)
+        with patch('xcvrd.xcvrd_utilities.media_settings_parser.get_media_settings_key',
+                   MagicMock(return_value={'vendor_key': 'TEST-VENDOR', 'media_key': 'TEST-MEDIA',
+                                          'lane_speed_key': 'speed:25G', 'medium_lane_speed_key': 'COPPER25'})):
+            self._check_notify_media_setting_with_gearbox(1, 4, 4)
+
+        # Test OPTICAL25 with gearbox (4 line lanes, 4 system lanes)
+        with patch('xcvrd.xcvrd_utilities.media_settings_parser.get_media_settings_key',
+                   MagicMock(return_value={'vendor_key': 'TEST-VENDOR', 'media_key': 'TEST-MEDIA',
+                                          'lane_speed_key': 'speed:25G', 'medium_lane_speed_key': 'OPTICAL25'})):
+            self._check_notify_media_setting_with_gearbox(1, 4, 4)
 
     def _check_notify_media_setting(self, index, expected_found=False, expected_value=None, xcvr_info_dict=None):
         xcvr_table_helper = XcvrTableHelper(DEFAULT_NAMESPACE)
@@ -2095,44 +2139,61 @@ class TestXcvrdScript(object):
         parser = media_settings_parser.CustomMediaSettingsParser()
         assert parser.parse(settings, 7, key) == ({}, {})
 
-    @pytest.mark.parametrize("media_dict, lane_count, subport_num, expected", [
+    @pytest.mark.parametrize("media_dict, lane_count, subport_num, gearbox_line_lane_count, expected", [
         (
             {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},
-            2, 2,
+            2, 2, None,
             {'main': '0x13,0x14'},
         ),
         (
             {'main': {'lane0': '0x11', 'lane1': '0x12'}, 'los_thresh': '7'},
-            2, 0,
+            2, 0, None,
             {'main': '0x11,0x12', 'los_thresh': '7'},
         ),
         (
             {},
-            2, 2,
+            2, 2, None,
             {},
         ),
+        (
+            {
+                'gb_line_main': {
+                    'lane0': '0x10', 'lane1': '0x11', 'lane2': '0x12', 'lane3': '0x13',
+                    'lane4': '0x14', 'lane5': '0x15', 'lane6': '0x16', 'lane7': '0x17',
+                },
+                'gb_system_main': {
+                    'lane0': '0x20', 'lane1': '0x21', 'lane2': '0x22', 'lane3': '0x23',
+                },
+            },
+            4, 0, 8,
+            {
+                'gb_line_main': '0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17',
+                'gb_system_main': '0x20,0x21,0x22,0x23',
+            },
+        ),
     ])
-    def test_media_settings_to_db_value(self, media_dict, lane_count, subport_num, expected):
+    def test_media_settings_to_db_value(self, media_dict, lane_count, subport_num,
+                                        gearbox_line_lane_count, expected):
         assert expected == media_settings_parser.MediaSettingsParserBase.to_db_value(
-            media_dict, lane_count, subport_num)
+            media_dict, lane_count, subport_num, gearbox_line_lane_count)
 
-    @pytest.mark.parametrize("media_dict, custom_media_dict, lane_count, subport_num, expected", [
+    @pytest.mark.parametrize("media_dict, custom_media_dict, lane_count, subport_num, gearbox_line_lane_count, expected", [
         (
             {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},
             {},
-            2, 2,
+            2, 2, None,
             {'main': '0x13,0x14'},
         ),
         (
             {},
             {'CUSTOM:XYZ': {'lane0': 10, 'lane1': 11, 'lane2': 12, 'lane3': 13}},
-            2, 2,
+            2, 2, None,
             {CUSTOM_SERDES_ATTRS_KEY_IN_DB: '{"attributes":[{"XYZ":{"value":[12,13]}}]}'},
         ),
         (
             {'main': {'lane0': '0x11', 'lane1': '0x12', 'lane2': '0x13', 'lane3': '0x14'}},
             {'CUSTOM:ABC': {'lane0': 1, 'lane1': 2, 'lane2': 3, 'lane3': 4}},
-            2, 2,
+            2, 2, None,
             {
                 'main': '0x13,0x14',
                 CUSTOM_SERDES_ATTRS_KEY_IN_DB: '{"attributes":[{"ABC":{"value":[3,4]}}]}',
@@ -2141,18 +2202,99 @@ class TestXcvrdScript(object):
         (
             {},
             {},
-            2, 2,
+            2, 2, None,
             {},
         ),
+        (
+            {
+                'gb_line_main': {
+                    'lane0': '0x10', 'lane1': '0x11', 'lane2': '0x12', 'lane3': '0x13',
+                    'lane4': '0x14', 'lane5': '0x15', 'lane6': '0x16', 'lane7': '0x17',
+                },
+                'gb_system_main': {
+                    'lane0': '0x20', 'lane1': '0x21', 'lane2': '0x22', 'lane3': '0x23',
+                },
+            },
+            {},
+            4, 0, 8,
+            {
+                'gb_line_main': '0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17',
+                'gb_system_main': '0x20,0x21,0x22,0x23',
+            },
+        ),
     ])
-    def test_resolve_media_settings_for_db(self, media_dict, custom_media_dict, lane_count, subport_num, expected):
+    def test_resolve_media_settings_for_db(self, media_dict, custom_media_dict, lane_count,
+                                           subport_num, gearbox_line_lane_count, expected):
         with patch.multiple(
             'xcvrd.xcvrd_utilities.media_settings_parser',
             get_traditional_media_settings_value=MagicMock(return_value=media_dict),
             get_custom_media_settings_value=MagicMock(return_value=custom_media_dict),
         ):
-            result = media_settings_parser.resolve_media_settings_for_db(7, {}, lane_count, subport_num)
+            result = media_settings_parser.resolve_media_settings_for_db(
+                7, {}, lane_count, subport_num, gearbox_line_lane_count
+            )
             assert result == expected
+
+    def _check_notify_media_setting_with_gearbox(self, index, gearbox_line_lanes, system_lanes, xcvr_info_dict=None):
+        """
+        Helper method to test notify_media_setting with gearbox configuration.
+
+        Args:
+            index: Physical port index
+            gearbox_line_lanes: Number of gearbox line lanes
+            system_lanes: Number of system lanes
+            xcvr_info_dict: Optional transceiver info dictionary
+
+        Returns:
+            None
+        """
+        xcvr_table_helper = XcvrTableHelper(DEFAULT_NAMESPACE)
+        cfg_port_tbl = MagicMock()
+        mock_cfg_table = xcvr_table_helper.get_cfg_port_tbl = MagicMock(return_value=cfg_port_tbl)
+
+        logical_port_name = 'Ethernet0'
+        xcvr_info_dict = {
+            index: {
+                'manufacturer': 'TestVendor',
+                'model': 'TestModel',
+                'cable_type': 'Length Cable Assembly(m)',
+                'cable_length': '1',
+                'specification_compliance': "passive_copper_media_interface",
+                'type_abbrv_name': 'QSFP-DD'
+            }
+        } if xcvr_info_dict is None else xcvr_info_dict
+
+        app_port_tbl = Table("APPL_DB", 'PORT_TABLE')
+        xcvr_table_helper.get_app_port_tbl = MagicMock(return_value=app_port_tbl)
+        xcvr_table_helper.is_npu_si_settings_update_required = MagicMock(return_value=True)
+
+        # Mock gearbox_line_lanes_dict to simulate gearbox configuration
+        gearbox_lanes_dict = {logical_port_name: gearbox_line_lanes}
+        xcvr_table_helper.get_gearbox_line_lanes_dict = MagicMock(return_value=gearbox_lanes_dict)
+
+        port_mapping = PortMapping()
+        port_change_event = PortChangeEvent(logical_port_name, index, 0, PortChangeEvent.PORT_ADD)
+        port_mapping.handle_port_change_event(port_change_event)
+
+        media_settings_parser.notify_media_setting(logical_port_name, xcvr_info_dict, xcvr_table_helper, port_mapping)
+
+        found, result = app_port_tbl.get(logical_port_name)
+        result_dict = dict(result) if result else None
+
+        # Verify that settings were found
+        assert found == True
+        assert result_dict is not None
+
+        # Verify that gearbox line settings have the correct number of lanes
+        for key in result_dict:
+            if 'gb_line' in key:
+                lane_values = result_dict[key].split(',')
+                assert len(lane_values) == gearbox_line_lanes, \
+                    f"Expected {gearbox_line_lanes} lanes for {key}, got {len(lane_values)}"
+            elif 'gb_system' in key:
+                lane_values = result_dict[key].split(',')
+                assert len(lane_values) == system_lanes, \
+                    f"Expected {system_lanes} lanes for {key}, got {len(lane_values)}"
 
     @patch('xcvrd.xcvrd_utilities.optics_si_parser.g_optics_si_dict', optics_si_settings_dict)
     @patch('xcvrd.xcvrd_utilities.common._wrapper_get_presence', MagicMock(return_value=True))
